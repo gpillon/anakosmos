@@ -1,0 +1,43 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "uid": "2c0ec97e-fb48-4b7b-a367-a7ad3bf44d0b",
+        "name": "node-worker-1",
+        "labels": {
+          "kubernetes.io/hostname": "node-worker-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.000Z"
+      },
+      "status": {
+        "phase": "Ready"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "39d1fc0c-82cf-4f15-977d-e828daced13b",
+        "name": "node-worker-2",
+        "labels": {
+          "kubernetes.io/hostname": "node-worker-2"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.000Z"
+      },
+      "status": {
+        "phase": "Ready"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "7d36b28b-16db-402f-8217-8ba01daf1644",
+        "name": "node-worker-3",
+        "labels": {
+          "kubernetes.io/hostname": "node-worker-3"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.000Z"
+      },
+      "status": {
+        "phase": "Ready"
+      }
+    }
+  ]
+}

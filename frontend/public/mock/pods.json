@@ -1,0 +1,532 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "uid": "c5d92519-8069-4552-842a-a9db6d6cdb6b",
+        "name": "app-default-0-59f5e",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f4983b82-090a-4d5a-9ed7-1410e911ae37"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "1e636cad-61e1-4f48-abc0-4d23f44241e8",
+        "name": "app-default-0-cb615",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f4983b82-090a-4d5a-9ed7-1410e911ae37"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "bdc931b2-7319-483c-9072-05cf642a7a9e",
+        "name": "app-default-0-32b9c",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f4983b82-090a-4d5a-9ed7-1410e911ae37"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "32be949d-45fd-4f54-aeda-b23b61a7b5c9",
+        "name": "app-default-1-d5e44",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "dfdd95af-5339-4a10-8460-c02440a4e872"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "CrashLoopBackOff"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "674e35ca-bab6-4d00-9718-7bf35d361500",
+        "name": "app-default-1-6fd45",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "dfdd95af-5339-4a10-8460-c02440a4e872"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "aa8b4f3c-d702-4f32-9994-fa5f4675a452",
+        "name": "app-default-1-53d04",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "dfdd95af-5339-4a10-8460-c02440a4e872"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "18d9729a-94df-4ebe-9be4-ed9b793002d8",
+        "name": "app-kube-system-0-22c41",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "d9a506bd-be99-4bbe-918f-2d9cee9bbe8a"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "f3d2ef59-cf45-4089-a5a8-98aa08fb81f2",
+        "name": "app-kube-system-0-27cd6",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "d9a506bd-be99-4bbe-918f-2d9cee9bbe8a"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "46a12c5e-0f08-4bd6-980d-2ff43c3b0739",
+        "name": "app-kube-system-0-c5f3c",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "d9a506bd-be99-4bbe-918f-2d9cee9bbe8a"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "94c3d0d3-5ddb-414a-a20e-606a71861706",
+        "name": "app-kube-system-1-a3376",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f9c223ac-3ef7-40ac-a319-8a7d2ba6b781"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "40fc40b3-32ce-43db-a6bd-68dd0b235fdd",
+        "name": "app-kube-system-1-f2d6a",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f9c223ac-3ef7-40ac-a319-8a7d2ba6b781"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "4f140eaf-d1d1-45dc-b203-f961f474520a",
+        "name": "app-kube-system-1-fb894",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "f9c223ac-3ef7-40ac-a319-8a7d2ba6b781"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "d7219e7c-ad92-49e1-bf25-071b6d514baf",
+        "name": "app-monitoring-0-7f4e4",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "b866c3dd-8f42-4f93-9bd4-f9471dd31bee"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "bbec9b78-ce10-4d05-9282-aff899f40a43",
+        "name": "app-monitoring-0-fcc10",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "b866c3dd-8f42-4f93-9bd4-f9471dd31bee"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "CrashLoopBackOff"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "670dbb18-537f-467b-a084-2ddeb361bfa6",
+        "name": "app-monitoring-0-146c2",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "b866c3dd-8f42-4f93-9bd4-f9471dd31bee"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "34bb6126-ba93-4363-8815-348fd5aab2f4",
+        "name": "app-monitoring-1-b53f6",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "6ad724ef-3abb-486c-9936-b716a8d0e7e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "CrashLoopBackOff"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "10b605f5-1044-4786-8fe1-41126a58824d",
+        "name": "app-monitoring-1-9729d",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "6ad724ef-3abb-486c-9936-b716a8d0e7e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "0e8b846e-e34d-4e2b-891c-5f2eb1ca0b14",
+        "name": "app-monitoring-1-b4679",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "6ad724ef-3abb-486c-9936-b716a8d0e7e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "ed08c36c-08a0-4d08-9f03-a3464f910629",
+        "name": "app-database-0-bd673",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "ba2d5a4b-92e5-42fb-bccc-4d38251411e4"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "2915285a-8716-4065-a591-0f543e64810a",
+        "name": "app-database-0-54d70",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "ba2d5a4b-92e5-42fb-bccc-4d38251411e4"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "aca6516d-34c2-47c9-882f-350c587a6eaa",
+        "name": "app-database-0-f66b2",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "ba2d5a4b-92e5-42fb-bccc-4d38251411e4"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-3"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "85145155-22d5-4d4a-8c67-db7148216622",
+        "name": "app-database-1-16bd4",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "c93761b7-ae58-4452-913a-d952429c67e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "1540803f-0b36-446a-908c-16a0623af1c3",
+        "name": "app-database-1-74c15",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "c93761b7-ae58-4452-913a-d952429c67e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-1"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "5c31245e-44a2-4d60-98e8-f5ddd7d962aa",
+        "name": "app-database-1-3b608",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z",
+        "ownerReferences": [
+          {
+            "uid": "c93761b7-ae58-4452-913a-d952429c67e7"
+          }
+        ]
+      },
+      "spec": {
+        "nodeName": "node-worker-2"
+      },
+      "status": {
+        "phase": "Running"
+      }
+    }
+  ]
+}

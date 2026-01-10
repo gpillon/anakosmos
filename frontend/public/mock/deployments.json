@@ -1,0 +1,116 @@
+{
+  "items": [
+    {
+      "metadata": {
+        "uid": "f4983b82-090a-4d5a-9ed7-1410e911ae37",
+        "name": "app-default-0",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "dfdd95af-5339-4a10-8460-c02440a4e872",
+        "name": "app-default-1",
+        "namespace": "default",
+        "labels": {
+          "app": "app-default-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "d9a506bd-be99-4bbe-918f-2d9cee9bbe8a",
+        "name": "app-kube-system-0",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "f9c223ac-3ef7-40ac-a319-8a7d2ba6b781",
+        "name": "app-kube-system-1",
+        "namespace": "kube-system",
+        "labels": {
+          "app": "app-kube-system-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "b866c3dd-8f42-4f93-9bd4-f9471dd31bee",
+        "name": "app-monitoring-0",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "6ad724ef-3abb-486c-9936-b716a8d0e7e7",
+        "name": "app-monitoring-1",
+        "namespace": "monitoring",
+        "labels": {
+          "app": "app-monitoring-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "ba2d5a4b-92e5-42fb-bccc-4d38251411e4",
+        "name": "app-database-0",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-0"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    },
+    {
+      "metadata": {
+        "uid": "c93761b7-ae58-4452-913a-d952429c67e7",
+        "name": "app-database-1",
+        "namespace": "database",
+        "labels": {
+          "app": "app-database-1"
+        },
+        "creationTimestamp": "2026-01-10T14:17:40.001Z"
+      },
+      "status": {
+        "phase": "Available"
+      }
+    }
+  ]
+}
