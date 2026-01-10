@@ -1,4 +1,9 @@
+
+# Kind Dev Environment
+KIND_CLUSTER_NAME ?= kube3d-dev
+
 .PHONY: backend-run backend-build backend-setup frontend-install frontend-build frontend-run dev backend-dev
+.PHONY: kind-up kind-down docker-build kind-load deploy dev-kind
 
 # Backend
 backend-setup:
@@ -32,3 +37,22 @@ frontend-run:
 # Dev (Run backend and frontend in parallel)
 dev:
 	$(MAKE) -j2 backend-dev frontend-run
+
+kind-up:
+	kind create cluster --config kind-config.yaml --name $(KIND_CLUSTER_NAME) || true
+
+kind-down:
+	kind delete cluster --name $(KIND_CLUSTER_NAME)
+
+docker-build:
+	podman build -t localhost/kube3d:latest . || podman build --no-cache -t localhost/kube3d:latest .
+
+kind-load:
+	kind load docker-image localhost/kube3d:latest --name $(KIND_CLUSTER_NAME)
+
+deploy:
+	kubectl apply -f backend/deploy/
+	kubectl rollout restart deployment/kube3d || true
+
+dev-kind: kind-up
+	./dev-loop.sh

@@ -4,6 +4,7 @@ export interface ClusterResource {
   kind: string;
   namespace: string;
   status: string;
+  health?: 'ok' | 'warning' | 'error';
   labels: Record<string, string>;
   ownerRefs: string[]; // IDs of owners
   creationTimestamp: string;

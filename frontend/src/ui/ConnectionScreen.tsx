@@ -16,6 +16,18 @@ export const ConnectionScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'select' | 'auth'>('select');
   const [activeMode, setActiveMode] = useState<'proxy' | 'custom' | 'mock' | null>(null);
+  const [inCluster, setInCluster] = useState(false);
+
+  React.useEffect(() => {
+    fetch('/api/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.inCluster) setInCluster(true);
+      })
+      .catch(() => {
+        // ignore errors
+      });
+  }, []);
 
   const handleConnect = async (mode: 'mock' | 'proxy' | 'custom', url?: string) => {
     setActiveMode(mode);
@@ -97,6 +109,24 @@ export const ConnectionScreen: React.FC = () => {
 
         {step === 'select' && (
           <div className="space-y-4">
+            {/* Suggested: In-Cluster Connection */}
+            {inCluster && (
+              <button
+                onClick={() => handleConnect('proxy')}
+                disabled={isLoading}
+                className="w-full p-4 flex items-center gap-4 bg-gradient-to-r from-blue-600/20 to-cyan-600/20 hover:from-blue-600/30 hover:to-cyan-600/30 border border-blue-500/50 rounded-lg transition-all group text-left relative overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-blue-500/5 group-hover:bg-blue-500/10 transition-colors" />
+                <div className="p-3 bg-blue-500 rounded-lg text-white shadow-lg shadow-blue-500/20 z-10">
+                  <Server className="w-6 h-6" />
+                </div>
+                <div className="z-10">
+                  <h3 className="font-semibold text-white">Connect to Local Cluster</h3>
+                  <p className="text-sm text-blue-200">Backend is running in-cluster</p>
+                </div>
+              </button>
+            )}
+
             {/* Option 1: Internal Cluster (Proxy) */}
             <button
               onClick={() => handleConnect('proxy')}

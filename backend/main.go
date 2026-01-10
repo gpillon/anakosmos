@@ -1,14 +1,13 @@
 package main
 
 import (
-	"crypto/tls"
 	"flag"
 	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
 	"path/filepath"
-	"strings"
+
+	"github.com/kube3d/backend/src/api"
+	"github.com/kube3d/backend/src/k8s"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -37,121 +36,73 @@ func main() {
 		}
 	}
 
-	// Serve Frontend
-	if *devProxy != "" {
-		log.Printf("Proxying frontend requests to %s\n", *devProxy)
-		target, err := url.Parse(*devProxy)
-		if err != nil {
-			log.Fatal("Invalid dev-proxy URL:", err)
-		}
-		proxy := httputil.NewSingleHostReverseProxy(target)
+	// API Routes
+	// Status
+	http.HandleFunc("/api/status", api.StatusHandler(config))
 
-		originalDirector := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			originalDirector(req)
-			// IMPORTANT: Fix Host header so Vite knows it's being accessed via proxy if needed
-			// But for Vite, keeping original Host is often safer OR setting it to target.Host
-			// Let's set it to target.Host to be safe (localhost:5173)
-			req.Host = target.Host
-		}
+	// Exec Handler
+	http.HandleFunc("/api/sock/exec", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
 
-		http.Handle("/", proxy)
-	} else {
-		// Serve Static Files
-		fs := http.FileServer(http.Dir("../frontend/dist"))
-		http.Handle("/", fs)
-	}
-
-	// Custom Proxy Handler (Dynamic Target)
-	http.HandleFunc("/proxy/", func(w http.ResponseWriter, r *http.Request) {
-		// CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Kube-Target")
-
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
+		var execConfig *rest.Config
+		if targetUrl != "" {
+			execConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			execConfig = config
 		}
 
-		targetUrlStr := r.Header.Get("X-Kube-Target")
-		if targetUrlStr == "" {
-			http.Error(w, "X-Kube-Target header missing", http.StatusBadRequest)
-			return
-		}
-
-		target, err := url.Parse(targetUrlStr)
-		if err != nil {
-			http.Error(w, "Invalid target URL", http.StatusBadRequest)
-			return
-		}
-
-		proxy := httputil.NewSingleHostReverseProxy(target)
-
-		originalDirector := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			originalDirector(req)
-			// Fix host header for the target
-			req.Host = target.Host
-
-			// Strip /proxy prefix
-			// Client sends /proxy/api/v1/pods -> /api/v1/pods
-			path := strings.TrimPrefix(req.URL.Path, "/proxy")
-			req.URL.Path = path
-		}
-
-		// Transport with InsecureSkipVerify (Typical for internal IPs)
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true,
-		}
-		proxy.Transport = transport
-
-		proxy.ServeHTTP(w, r)
-	})
-
-	// Internal Proxy (Using local kubeconfig)
-	http.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
-		if config == nil {
+		if execConfig == nil {
 			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
 			return
 		}
-
-		target, _ := url.Parse(config.Host)
-		proxy := httputil.NewSingleHostReverseProxy(target)
-
-		// Update headers for auth
-		originalDirector := proxy.Director
-		proxy.Director = func(req *http.Request) {
-			originalDirector(req)
-			// Strip /api prefix
-			// K8s API is at /, so /api/api/v1/... -> /api/v1/...
-			// But our client sends /api/api/v1.
-			// Let's assume client sends /api/<path> and we map to /<path>
-			path := strings.TrimPrefix(req.URL.Path, "/api")
-			req.URL.Path = path
-
-			// Set Auth
-			if config.BearerToken != "" {
-				req.Header.Set("Authorization", "Bearer "+config.BearerToken)
-			}
-			if config.Username != "" && config.Password != "" {
-				req.SetBasicAuth(config.Username, config.Password)
-			}
-		}
-
-		// Handle TLS
-		transport := http.DefaultTransport.(*http.Transport).Clone()
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: config.TLSClientConfig.Insecure,
-		}
-		if config.TLSClientConfig.CAData != nil {
-			// Add CA logic if strictly needed, but InsecureSkipVerify is common for local dashboards
-		}
-		proxy.Transport = transport
-
-		proxy.ServeHTTP(w, r)
+		k8s.HandleExec(execConfig, w, r)
 	})
+
+	// Watch Handler
+	http.HandleFunc("/api/sock/watch", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		var watchConfig *rest.Config
+		if targetUrl != "" {
+			watchConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			watchConfig = config
+		}
+
+		if watchConfig == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return
+		}
+		k8s.HandleWatch(watchConfig, w, r)
+	})
+
+	// Custom Proxy Handler (Dynamic Target)
+	http.HandleFunc("/proxy/", api.ProxyHandler())
+
+	// Internal Proxy (Using local kubeconfig)
+	http.HandleFunc("/api/", api.InternalProxyHandler(config))
+
+	// Serve Frontend or Proxy to Dev Server
+	if *devProxy != "" {
+		log.Printf("Proxying frontend requests to %s\n", *devProxy)
+		http.Handle("/", api.FrontendProxyHandler(*devProxy))
+	} else {
+		// Serve Static Files
+		// Ensure we serve from the correct relative path in the container
+		// In Dockerfile we copy to /app/frontend/dist and binary is in /app
+		fs := http.FileServer(http.Dir("frontend/dist"))
+		http.Handle("/", fs)
+	}
 
 	log.Printf("Server starting on :%s\n", *port)
 	if err := http.ListenAndServe(":"+*port, nil); err != nil {

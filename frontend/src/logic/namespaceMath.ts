@@ -7,7 +7,7 @@ export const getNamespacePosition = (index: number, total: number) => {
 
   // Arrange namespaces in a circle
   const angle = (index / total) * Math.PI * 2;
-  const radius = 35; // Much larger radius for clear separation
+  const radius = Math.min(total * 4, 35); // Dynamic radius based on count, max 35
   return {
     x: Math.cos(angle) * radius,
     z: Math.sin(angle) * radius

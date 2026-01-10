@@ -13,11 +13,12 @@ export const useKeyboardShortcuts = () => {
         case 'Escape':
           setSelectedResourceId(null);
           break;
-        case '/':
+        case '/': {
           e.preventDefault();
           const searchInput = document.querySelector('input[type="text"]') as HTMLInputElement;
           searchInput?.focus();
           break;
+        }
         // View modes removed from shortcuts as they are now filter presets
       }
     };

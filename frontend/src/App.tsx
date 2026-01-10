@@ -9,6 +9,8 @@ import { ResourceLegend } from './ui/ResourceLegend';
 import { useKeyboardShortcuts } from './store/useKeyboardShortcuts';
 import { useClusterStore } from './store/useClusterStore';
 
+import { TerminalWindow } from './ui/TerminalWindow';
+
 function App() {
   useKeyboardShortcuts();
   const { isConnected, connect } = useClusterStore();
@@ -25,12 +27,13 @@ function App() {
   }
 
   return (
-    <div className="w-screen h-screen overflow-hidden bg-slate-900 text-white font-sans selection:bg-blue-500/30">
+    <div className="relative w-screen h-screen overflow-hidden bg-slate-900 text-white font-sans selection:bg-blue-500/30">
+      <ClusterScene />
       <HUD />
       <ViewSelector />
       <ResourceLegend />
-      <ClusterScene />
       <Sidebar />
+      <TerminalWindow />
       <Onboarding />
     </div>
   );

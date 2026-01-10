@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useClusterStore } from '../store/useClusterStore';
+import { useTerminalStore } from '../store/useTerminalStore';
 import { 
   X, Activity, Cpu, HardDrive, 
   FileText, Terminal, Clock,
-  ChevronRight
+  ChevronRight, Save, Download, Check, AlertCircle
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import Editor from '@monaco-editor/react';
+import yaml from 'js-yaml';
 
 type Tab = 'overview' | 'metadata' | 'events' | 'yaml';
 
@@ -14,16 +17,96 @@ export const Sidebar: React.FC = () => {
   const selectedResourceId = useSettingsStore(state => state.selectedResourceId);
   const setSelectedResourceId = useSettingsStore(state => state.setSelectedResourceId);
   const resources = useClusterStore(state => state.resources);
+  const client = useClusterStore(state => state.client);
+  const { openTerminal } = useTerminalStore();
   const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [events, setEvents] = useState<any[]>([]);
+  const [yamlContent, setYamlContent] = useState<string>('');
+  const [isYamlLoading, setIsYamlLoading] = useState(false);
+  const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
 
   const resource = selectedResourceId ? resources[selectedResourceId] : null;
 
-  if (!resource) return null;
+  // Clear feedback on tab change or resource change
+  useEffect(() => {
+      setFeedback(null);
+  }, [activeTab, resource]);
 
-  const isUnhealthy = resource.status !== 'Running' && resource.status !== 'Ready' && resource.status !== 'Active' && resource.status !== 'Available';
+  // Poll for events when tab is active
+  useEffect(() => {
+    if (!resource || activeTab !== 'events' || !client) return;
+
+    const fetchEvents = async () => {
+        const evts = await client.getEvents(resource.namespace, resource.id);
+        // Sort by timestamp descending
+        evts.sort((a, b) => {
+            const tA = new Date(a.lastTimestamp || a.eventTime || a.metadata.creationTimestamp).getTime();
+            const tB = new Date(b.lastTimestamp || b.eventTime || b.metadata.creationTimestamp).getTime();
+            return tB - tA;
+        });
+        setEvents(evts);
+    };
+
+    fetchEvents();
+    const interval = setInterval(fetchEvents, 3000); // Poll every 3s
+
+    return () => clearInterval(interval);
+  }, [resource, activeTab, client]);
+
+  // Fetch YAML when tab is active
+  useEffect(() => {
+    if (!resource || activeTab !== 'yaml' || !client) return;
+    
+    const fetchYaml = async () => {
+        setIsYamlLoading(true);
+        try {
+            const rawContent = await client.getYaml(resource.namespace, resource.kind, resource.name);
+            try {
+                // Parse and clean up YAML
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const doc = yaml.load(rawContent) as any;
+                if (doc?.metadata?.managedFields) {
+                    delete doc.metadata.managedFields;
+                }
+                setYamlContent(yaml.dump(doc));
+            } catch (e) {
+                console.error('YAML parse error', e);
+                setYamlContent(rawContent);
+            }
+        } finally {
+            setIsYamlLoading(false);
+        }
+    };
+    
+    fetchYaml();
+  }, [resource, activeTab, client]);
+
+    const handleApply = async () => {
+        if (!client || !resource) return;
+        setIsYamlLoading(true);
+        setFeedback(null);
+        try {
+            await client.applyYaml(resource.namespace, resource.kind, resource.name, yamlContent);
+            setFeedback({ type: 'success', message: 'Resource updated' });
+            
+            // Auto hide success after 3s
+            setTimeout(() => setFeedback(null), 3000);
+        } catch (e: any) {
+            setFeedback({ type: 'error', message: e.message || 'Update failed' });
+        } finally {
+            setIsYamlLoading(false);
+        }
+    };
+
+    if (!resource) return null;
+
+  const isUnhealthy = resource.health ? (resource.health === 'error' || resource.health === 'warning') : (resource.status !== 'Running' && resource.status !== 'Ready' && resource.status !== 'Active' && resource.status !== 'Available');
 
   return (
-    <div className="absolute top-0 right-0 h-full w-96 bg-slate-900/95 backdrop-blur-xl border-l border-slate-700/50 text-slate-100 shadow-2xl flex flex-col z-20 transition-transform duration-300">
+    <div className={clsx(
+        "absolute top-0 right-0 h-full bg-slate-900/95 backdrop-blur-xl border-l border-slate-700/50 text-slate-100 shadow-2xl flex flex-col z-20 transition-all duration-300",
+        activeTab === 'yaml' ? "w-[800px]" : "w-96"
+    )}>
       
       {/* Header */}
       <div className="p-6 border-b border-slate-700/50 flex flex-col gap-4">
@@ -42,12 +125,24 @@ export const Sidebar: React.FC = () => {
         
         <h2 className="text-2xl font-bold break-all leading-tight">{resource.name}</h2>
         
-        <div className={clsx(
-          "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-fit",
-          isUnhealthy ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
-        )}>
-          <Activity size={16} />
-          {resource.status}
+        <div className="flex gap-2 items-center">
+            <div className={clsx(
+            "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-fit",
+            isUnhealthy ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+            )}>
+            <Activity size={16} />
+            {resource.status}
+            </div>
+            
+            {resource.health && resource.health !== 'ok' && (
+                <div className={clsx(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-semibold w-fit",
+                    resource.health === 'error' ? "bg-red-500/20 text-red-400" : "bg-yellow-500/20 text-yellow-400"
+                )}>
+                    {resource.health === 'error' ? <AlertCircle size={16} /> : <Activity size={16} />}
+                    {resource.health.toUpperCase()}
+                </div>
+            )}
         </div>
       </div>
 
@@ -60,7 +155,10 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+      <div className={clsx(
+          "flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent",
+          activeTab === 'yaml' ? "p-0 flex flex-col" : "p-6" 
+      )}>
         
         {activeTab === 'overview' && (
           <div className="space-y-8">
@@ -73,13 +171,23 @@ export const Sidebar: React.FC = () => {
             )}
 
             {/* Quick Actions */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Actions</h3>
-              <div className="grid grid-cols-2 gap-3">
-                <ActionButton icon={Terminal} label="Exec Shell" />
-                <ActionButton icon={FileText} label="View Logs" />
+            {resource.kind === 'Pod' && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Actions</h3>
+                <div className="grid grid-cols-2 gap-3">
+                  <ActionButton 
+                    icon={Terminal} 
+                    label="Exec Shell" 
+                    onClick={() => openTerminal(resource.id, resource.name, resource.namespace || 'default', 'shell')}
+                  />
+                  <ActionButton 
+                    icon={FileText} 
+                    label="View Logs" 
+                    onClick={() => openTerminal(resource.id, resource.name, resource.namespace || 'default', 'logs')}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Relations */}
             <div className="space-y-3">
@@ -133,28 +241,94 @@ export const Sidebar: React.FC = () => {
 
         {activeTab === 'events' && (
           <div className="space-y-4">
-             {/* Mock Events */}
-             <EventItem type="Normal" reason="Scheduled" message="Successfully assigned to node-worker-1" time="2m ago" />
-             <EventItem type="Normal" reason="Pulling" message="Pulling image 'nginx:latest'" time="1m ago" />
-             <EventItem type="Normal" reason="Created" message="Created container app" time="45s ago" />
-             <EventItem type="Normal" reason="Started" message="Started container app" time="44s ago" />
-             {isUnhealthy && (
-                <EventItem type="Warning" reason="BackOff" message="Back-off restarting failed container" time="Now" />
+             {events.length === 0 ? (
+                <div className="text-slate-500 text-sm italic text-center py-4">No events found</div>
+             ) : (
+                events.map((evt, i) => {
+                    // Calculate time ago
+                    const time = evt.lastTimestamp || evt.eventTime || evt.metadata.creationTimestamp;
+                    const date = new Date(time);
+                    const now = new Date();
+                    const diffMs = now.getTime() - date.getTime();
+                    const diffMins = Math.floor(diffMs / 60000);
+                    
+                    let timeStr = `${diffMins}m ago`;
+                    if (diffMins < 1) timeStr = 'Just now';
+                    else if (diffMins > 60) timeStr = `${Math.floor(diffMins/60)}h ago`;
+
+                    return (
+                        <EventItem 
+                            key={evt.metadata.uid || i}
+                            type={evt.type === 'Warning' ? 'Warning' : 'Normal'}
+                            reason={evt.reason}
+                            message={evt.message}
+                            time={timeStr}
+                        />
+                    );
+                })
              )}
           </div>
         )}
 
         {activeTab === 'yaml' && (
-          <div className="font-mono text-xs text-slate-400 whitespace-pre-wrap bg-slate-950 p-4 rounded-lg border border-slate-800">
-            {`apiVersion: v1
-kind: ${resource.kind}
-metadata:
-  name: ${resource.name}
-  namespace: ${resource.namespace}
-  uid: ${resource.id}
-  creationTimestamp: ${resource.creationTimestamp}
-status:
-  phase: ${resource.status}`}
+          <div className="flex-1 flex flex-col h-full bg-[#1e1e1e]">
+            {/* Toolbar */}
+            <div className="flex items-center justify-between p-2 bg-[#252526] border-b border-[#3e3e42]">
+                <div className="flex items-center gap-2 px-2 overflow-hidden flex-1">
+                    {feedback ? (
+                        <div className={clsx(
+                            "flex items-center gap-2 text-xs font-medium animate-in fade-in slide-in-from-left-2",
+                            feedback.type === 'success' ? "text-emerald-400" : "text-red-400"
+                        )}>
+                            {feedback.type === 'success' ? <Check size={14} /> : <AlertCircle size={14} />}
+                            <span className="truncate" title={feedback.message}>{feedback.message}</span>
+                        </div>
+                    ) : (
+                        <div className="text-xs text-slate-400">
+                            {isYamlLoading ? 'Processing...' : 'YAML Editor'}
+                        </div>
+                    )}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                    <button 
+                        className="p-1.5 hover:bg-slate-700 text-slate-400 hover:text-white rounded"
+                        title="Download YAML"
+                    >
+                        <Download size={14} />
+                    </button>
+                    <button 
+                        onClick={handleApply}
+                        disabled={isYamlLoading}
+                        className={clsx(
+                            "flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-medium rounded transition-colors",
+                            isYamlLoading && "opacity-50 cursor-not-allowed"
+                        )}
+                        title="Apply Changes"
+                    >
+                        <Save size={14} />
+                        {isYamlLoading ? 'Applying...' : 'Apply'}
+                    </button>
+                </div>
+            </div>
+            
+            {/* Editor */}
+            <div className="flex-1 relative">
+                <Editor
+                    height="100%"
+                    defaultLanguage="yaml"
+                    value={yamlContent}
+                    theme="vs-dark"
+                    options={{
+                        minimap: { enabled: false },
+                        scrollBeyondLastLine: false,
+                        fontSize: 12,
+                        wordWrap: 'on',
+                        automaticLayout: true,
+                        readOnly: false // Allow editing
+                    }}
+                    onChange={(value) => setYamlContent(value || '')}
+                />
+            </div>
           </div>
         )}
       </div>
@@ -185,8 +359,11 @@ const MetricCard = ({ icon: Icon, label, value }: { icon: any, label: string, va
   </div>
 );
 
-const ActionButton = ({ icon: Icon, label }: { icon: any, label: string }) => (
-  <button className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition-all border border-slate-700 hover:border-slate-600 hover:shadow-lg active:scale-95">
+const ActionButton = ({ icon: Icon, label, onClick }: { icon: any, label: string, onClick?: () => void }) => (
+  <button 
+    onClick={onClick}
+    className="flex items-center justify-center gap-2 p-3 bg-slate-800 hover:bg-slate-700 rounded-lg text-sm font-medium transition-all border border-slate-700 hover:border-slate-600 hover:shadow-lg active:scale-95"
+  >
     <Icon size={16} className="text-blue-400" />
     {label}
   </button>

@@ -1,5 +1,5 @@
 # Build Frontend
-FROM node:20-alpine as frontend-builder
+FROM node:24-alpine as frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
 RUN npm ci
@@ -7,12 +7,12 @@ COPY frontend/ .
 RUN npm run build
 
 # Build Backend
-FROM golang:1.23-alpine as backend-builder
+FROM golang:1.25-alpine as backend-builder
 WORKDIR /app/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
 COPY backend/ .
-RUN CGO_ENABLED=0 GOOS=linux go build -o kube3d-server .
+RUN CGO_ENABLED=0 GOOS=linux go build -o kube3d-server main.go
 
 # Final Stage
 FROM alpine:latest

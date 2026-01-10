@@ -5,6 +5,10 @@ import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { ClusterResource } from '../api/types';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { 
+  nodeGeo, serviceGeo, podGeo, deployGeo, octGeo, 
+  torusGeo, boxGeo, smallBoxGeo, puckGeo, barrelGeo, slabGeo, tetraGeo 
+} from './sharedResources';
 
 interface NodeObjectProps {
   resource: ClusterResource;
@@ -25,9 +29,9 @@ const KIND_COLORS: Record<string, string> = {
   Route: '#f472b6', 
   NetworkAttachmentDefinition: '#22d3ee', 
   NodeNetworkConfigurationPolicy: '#94a3b8', 
-  PersistentVolumeClaim: '#f97316', // Orange 500
-  PersistentVolume: '#ea580c', // Orange 600
-  StorageClass: '#c2410c', // Orange 700
+  PersistentVolumeClaim: '#f97316', 
+  PersistentVolume: '#ea580c', 
+  StorageClass: '#c2410c', 
 };
 
 export const NodeObject: React.FC<NodeObjectProps> = ({ resource, position, onClick, dimmed = false }) => {
@@ -45,26 +49,25 @@ export const NodeObject: React.FC<NodeObjectProps> = ({ resource, position, onCl
   const statusFilterState = kindFilters[resource.status] || 'default';
 
   // Pulse effect for unhealthy resources
-  // 'Succeeded' is a healthy state for completed Jobs/Pods
-  const isHealthy = ['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded'].includes(resource.status);
-  const isUnhealthy = !isHealthy;
+  const isUnhealthy = resource.health === 'warning' || resource.health === 'error';
+  // Fallback if health not calculated yet (backward compatibility or mock)
+  const isLegacyUnhealthy = !['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded'].includes(resource.status);
+  const finalIsUnhealthy = resource.health ? isUnhealthy : isLegacyUnhealthy;
   
   useFrame((state) => {
     if (!meshRef.current) return;
     
     const t = state.clock.getElapsedTime();
 
-    // Focus Pulse (Global Focus or Specific Status Focus)
+    // Focus Pulse
     if (isFocusedKind || statusFilterState === 'focused') {
         const scale = 1.5 + Math.sin(t * 5) * 0.1; 
         meshRef.current.scale.setScalar(scale);
-        
-        // Rotate slowly if focused
         meshRef.current.rotation.y += 0.01;
     } 
-    // Unhealthy Pulse (only if not grayed)
-    else if (isUnhealthy && statusFilterState !== 'grayed') {
-      const scale = 1 + Math.sin(t * 8) * 0.1; // Fast pulse
+    // Unhealthy Pulse
+    else if (finalIsUnhealthy && statusFilterState !== 'grayed') {
+      const scale = 1 + Math.sin(t * 8) * 0.1; 
       meshRef.current.scale.setScalar(scale);
     } else {
       meshRef.current.scale.setScalar(1);
@@ -75,97 +78,65 @@ export const NodeObject: React.FC<NodeObjectProps> = ({ resource, position, onCl
   // Return null if hidden by status filter
   if (statusFilterState === 'hidden') return null;
 
-  const baseColor = isUnhealthy ? '#ef4444' : (KIND_COLORS[resource.kind] || '#9ca3af');
+  const baseColor = finalIsUnhealthy ? '#ef4444' : (KIND_COLORS[resource.kind] || '#9ca3af');
   
   let displayColor = baseColor;
   let finalOpacity = dimmed ? 0.1 : 1;
   let finalEmissive = '#000000';
   let finalEmissiveIntensity = 0;
 
-  // Selection Override
+  // Selection/Focus Logic
   if (isSelected) {
       displayColor = '#f472b6';
       finalEmissive = '#f472b6';
       finalEmissiveIntensity = 3;
   }
-  // Focus (Kind or Status) Override
   else if (isFocusedKind || statusFilterState === 'focused') {
-      displayColor = '#fbbf24'; // Amber
+      displayColor = '#fbbf24';
       finalEmissive = '#fbbf24';
       finalEmissiveIntensity = 3;
   }
-  // Grayed Override
   else if (statusFilterState === 'grayed') {
-      displayColor = '#475569'; // Slate 600
+      displayColor = '#475569';
       finalOpacity = 0.2;
       finalEmissiveIntensity = 0;
   }
-  // Unhealthy Override (if not grayed)
-  else if (isUnhealthy) {
+  else if (finalIsUnhealthy) {
       displayColor = '#ef4444';
       finalEmissive = '#ef4444';
       finalEmissiveIntensity = 1.5;
   }
-  // Hover Override (lowest priority)
   else if (hovered) {
       displayColor = '#ffffff';
   }
 
-  // Render logic based on Kind
-  if (resource.kind === 'Node') {
-    return (
-      <group position={[position[0], position[1] + 0.2, position[2]]}>
-        <mesh
-          ref={meshRef}
-          onClick={onClick}
-          onPointerOver={(e) => { e.stopPropagation(); setHover(true); }}
-          onPointerOut={() => setHover(false)}
-        >
-          <cylinderGeometry args={[2.5, 2.5, 0.4, 8]} />
-          <meshPhysicalMaterial 
-            color={displayColor}
-            metalness={0.2}
-            roughness={0.2}
-            clearcoat={0.5}
-            transparent
-            opacity={finalOpacity}
-            flatShading
-            emissive={finalEmissive}
-            emissiveIntensity={finalEmissiveIntensity}
-          />
-        </mesh>
-        <Html position={[0, 0.3, 0]} center transform sprite>
-          <div className={`text-[10px] font-mono tracking-widest pointer-events-none transition-opacity ${dimmed || statusFilterState === 'grayed' ? 'opacity-20' : 'opacity-80 text-slate-400'}`}>
-            {resource.name}
-          </div>
-        </Html>
-      </group>
-    );
-  }
-
-  // Floating resources
+  // Select shared geometry
   let geometry;
-  if (resource.kind === 'Service') geometry = <icosahedronGeometry args={[0.5]} />;
-  else if (resource.kind === 'Pod') geometry = <capsuleGeometry args={[0.25, 0.5, 4, 16]} />;
-  else if (resource.kind === 'Deployment') geometry = <dodecahedronGeometry args={[0.6]} />;
-  else if (resource.kind === 'Ingress' || resource.kind === 'Route') geometry = <octahedronGeometry args={[0.5]} />;
-  else if (resource.kind === 'NetworkAttachmentDefinition') geometry = <torusKnotGeometry args={[0.3, 0.1, 64, 8, 2, 3]} />;
-  else if (resource.kind === 'NodeNetworkConfigurationPolicy') geometry = <boxGeometry args={[0.8, 0.2, 0.8]} />;
-  else if (resource.kind === 'Secret' || resource.kind === 'ConfigMap') geometry = <boxGeometry args={[0.4, 0.4, 0.4]} />;
-  else if (resource.kind === 'PersistentVolumeClaim') geometry = <cylinderGeometry args={[0.4, 0.4, 0.2, 32]} />; // Disc/Puck
-  else if (resource.kind === 'PersistentVolume') geometry = <cylinderGeometry args={[0.5, 0.5, 0.8, 32]} />; // Barrel
-  else if (resource.kind === 'StorageClass') geometry = <boxGeometry args={[1, 0.2, 1]} />; // Slab
-  else geometry = <tetrahedronGeometry args={[0.5]} />;
+  if (resource.kind === 'Node') geometry = nodeGeo;
+  else if (resource.kind === 'Service') geometry = serviceGeo;
+  else if (resource.kind === 'Pod') geometry = podGeo;
+  else if (resource.kind === 'Deployment') geometry = deployGeo;
+  else if (resource.kind === 'Ingress' || resource.kind === 'Route') geometry = octGeo;
+  else if (resource.kind === 'NetworkAttachmentDefinition') geometry = torusGeo;
+  else if (resource.kind === 'NodeNetworkConfigurationPolicy') geometry = boxGeo;
+  else if (resource.kind === 'Secret' || resource.kind === 'ConfigMap') geometry = smallBoxGeo;
+  else if (resource.kind === 'PersistentVolumeClaim') geometry = puckGeo;
+  else if (resource.kind === 'PersistentVolume') geometry = barrelGeo;
+  else if (resource.kind === 'StorageClass') geometry = slabGeo;
+  else geometry = tetraGeo;
+
+  // Adjust Y pos for Node
+  const yOffset = resource.kind === 'Node' ? 0.2 : 0;
 
   return (
-    <group position={position}>
+    <group position={[position[0], position[1] + yOffset, position[2]]}>
       <mesh
         ref={meshRef}
+        geometry={geometry}
         onClick={onClick}
         onPointerOver={(e) => { e.stopPropagation(); setHover(true); }}
         onPointerOut={() => setHover(false)}
       >
-        {geometry}
         <meshPhysicalMaterial 
           color={displayColor}
           metalness={0.5}
@@ -179,14 +150,24 @@ export const NodeObject: React.FC<NodeObjectProps> = ({ resource, position, onCl
         />
       </mesh>
       
-      {(hovered || isSelected || isFocusedKind || statusFilterState === 'focused') && (
+      {/* Node Label (Always visible but dimmed) */}
+      {resource.kind === 'Node' && (
+        <Html position={[0, 0.3, 0]} center transform sprite>
+          <div className={`text-[10px] font-mono tracking-widest pointer-events-none transition-opacity ${dimmed || statusFilterState === 'grayed' ? 'opacity-20' : 'opacity-80 text-slate-400'}`}>
+            {resource.name}
+          </div>
+        </Html>
+      )}
+      
+      {/* Hover Label for others (Only on hover/select/focus) */}
+      {resource.kind !== 'Node' && (hovered || isSelected || isFocusedKind || statusFilterState === 'focused') && (
         <Html>
           <div className="bg-slate-900/90 backdrop-blur border border-slate-700 text-white text-xs px-2 py-1 rounded shadow-xl whitespace-nowrap pointer-events-none transform -translate-y-8 pointer-events-none z-0">
-            <span className={`font-bold mr-1 ${isUnhealthy ? 'text-red-400' : 'text-slate-400'}`}>
+            <span className={`font-bold mr-1 ${finalIsUnhealthy ? 'text-red-400' : 'text-slate-400'}`}>
               {resource.kind}:
             </span>
             {resource.name}
-            {isUnhealthy && <span className="ml-2 text-red-500 font-bold">!</span>}
+            {finalIsUnhealthy && <span className="ml-2 text-red-500 font-bold">!</span>}
           </div>
         </Html>
       )}

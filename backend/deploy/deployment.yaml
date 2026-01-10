@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube3d
+  namespace: default
+  labels:
+    app: kube3d
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kube3d
+  template:
+    metadata:
+      labels:
+        app: kube3d
+    spec:
+      serviceAccountName: kube3d-sa
+      containers:
+      - name: kube3d
+        image: localhost/kube3d:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8080
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kube3d
+  namespace: default
+spec:
+  selector:
+    app: kube3d
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+      nodePort: 30000
+  type: NodePort
