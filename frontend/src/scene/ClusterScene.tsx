@@ -8,6 +8,7 @@ import { useClusterStore } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { NodeObject } from './NodeObject';
 import { LinkObject } from './LinkObject';
+import { NamespaceProjections } from './NamespaceProjections';
 import { useForceLayout } from '../logic/LayoutEngine';
 
 const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ selectedPos }) => {
@@ -57,6 +58,7 @@ export const ClusterScene: React.FC = () => {
   const hiddenResourceKinds = useSettingsStore(state => state.hiddenResourceKinds);
   const hiddenLinkTypes = useSettingsStore(state => state.hiddenLinkTypes);
   const statusFilters = useSettingsStore(state => state.statusFilters);
+  const enableNamespaceProjection = useSettingsStore(state => state.enableNamespaceProjection);
   
   // Use physics layout - now returns positions AND dynamic zones
   const { positions } = useForceLayout(resources, links);
@@ -102,6 +104,10 @@ export const ClusterScene: React.FC = () => {
         />
         
         <CameraManager selectedPos={selectedPos} />
+
+        {enableNamespaceProjection && (
+            <NamespaceProjections resources={resources} positions={positions} />
+        )}
 
         <group>
           {Object.values(resources).map(resource => (

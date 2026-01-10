@@ -5,11 +5,17 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    host: true, // Listen on all addresses
+    strictPort: true,
+    port: 5173,
     proxy: {
       '/api': {
         target: 'http://localhost:8080',
         changeOrigin: true,
       }
+    },
+    watch: {
+      usePolling: true, // Needed for WSL2 in some cases
     }
   }
 })

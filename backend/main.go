@@ -23,6 +23,7 @@ func main() {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
 	port := flag.String("port", "8080", "Port to listen on")
+	devProxy := flag.String("dev-proxy", "", "Dev URL to reverse proxy to (e.g. http://localhost:5173)")
 	flag.Parse()
 
 	// Try to build config from flags
@@ -36,9 +37,30 @@ func main() {
 		}
 	}
 
-	// Serve Frontend (Static Files)
-	fs := http.FileServer(http.Dir("../frontend/dist"))
-	http.Handle("/", fs)
+	// Serve Frontend
+	if *devProxy != "" {
+		log.Printf("Proxying frontend requests to %s\n", *devProxy)
+		target, err := url.Parse(*devProxy)
+		if err != nil {
+			log.Fatal("Invalid dev-proxy URL:", err)
+		}
+		proxy := httputil.NewSingleHostReverseProxy(target)
+
+		originalDirector := proxy.Director
+		proxy.Director = func(req *http.Request) {
+			originalDirector(req)
+			// IMPORTANT: Fix Host header so Vite knows it's being accessed via proxy if needed
+			// But for Vite, keeping original Host is often safer OR setting it to target.Host
+			// Let's set it to target.Host to be safe (localhost:5173)
+			req.Host = target.Host
+		}
+
+		http.Handle("/", proxy)
+	} else {
+		// Serve Static Files
+		fs := http.FileServer(http.Dir("../frontend/dist"))
+		http.Handle("/", fs)
+	}
 
 	// Custom Proxy Handler (Dynamic Target)
 	http.HandleFunc("/proxy/", func(w http.ResponseWriter, r *http.Request) {

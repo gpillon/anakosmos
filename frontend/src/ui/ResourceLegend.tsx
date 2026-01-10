@@ -17,7 +17,8 @@ import {
   Zap,
   Network,
   Database,
-  GitFork
+  GitFork,
+  Map as MapIcon
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -32,7 +33,9 @@ export const ResourceLegend: React.FC = () => {
     focusedResourceKind,
     setFocusedResourceKind,
     statusFilters,
-    cycleStatusFilter
+    cycleStatusFilter,
+    enableNamespaceProjection,
+    setEnableNamespaceProjection
   } = useSettingsStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [search, setSearch] = useState('');
@@ -132,6 +135,25 @@ export const ResourceLegend: React.FC = () => {
         {/* List Content */}
         {isExpanded && (
           <div className="overflow-y-auto custom-scrollbar flex-1 p-1 space-y-0.5">
+
+            {/* ZONES SECTION */}
+            <div className="px-2 py-1.5 mt-1 border-b border-slate-700/50">
+               <h4 className="text-[10px] uppercase font-bold text-slate-500 mb-1">View Options</h4>
+               <button 
+                  onClick={() => setEnableNamespaceProjection(!enableNamespaceProjection)}
+                  className={clsx(
+                      "flex items-center gap-2 text-xs transition-colors w-full text-left",
+                      enableNamespaceProjection ? "text-slate-200" : "text-slate-400 hover:text-slate-200"
+                  )}
+              >
+                  <span className={clsx("w-3 h-0.5 rounded-full transition-colors", enableNamespaceProjection ? "bg-blue-500" : "bg-slate-700")}></span>
+                  <MapIcon size={12} />
+                  <span>Namespace Zones</span>
+                  <div className="ml-auto opacity-0 group-hover:opacity-100">
+                    {enableNamespaceProjection ? <CheckSquare size={10} className="text-blue-500" /> : <Square size={10} />}
+                  </div>
+              </button>
+            </div>
             
             {/* LINK TYPES SECTION */}
             <div className="px-2 py-1.5 mt-1 border-b border-slate-700/50">

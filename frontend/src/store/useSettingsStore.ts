@@ -26,6 +26,7 @@ interface SettingsStore {
   selectedResourceId: string | null;
   savedConnections: SavedConnection[];
   activePreset: string;
+  enableNamespaceProjection: boolean;
   
   setGroupBy: (groupBy: 'namespace' | 'node' | 'none') => void;
   setFilterNamespaces: (ns: string[]) => void;
@@ -38,6 +39,7 @@ interface SettingsStore {
   setSearchQuery: (query: string) => void;
   setSelectedResourceId: (id: string | null) => void;
   setActivePreset: (preset: string) => void;
+  setEnableNamespaceProjection: (enable: boolean) => void;
   
   addSavedConnection: (conn: Omit<SavedConnection, 'id' | 'lastUsed'>) => void;
   removeSavedConnection: (id: string) => void;
@@ -58,6 +60,7 @@ export const useSettingsStore = create<SettingsStore>()(
       selectedResourceId: null,
       savedConnections: [],
       activePreset: 'overview',
+      enableNamespaceProjection: true,
 
       setGroupBy: (groupBy) => set({ groupBy }),
       setFilterNamespaces: (ns) => set({ filterNamespaces: ns }),
@@ -105,6 +108,7 @@ export const useSettingsStore = create<SettingsStore>()(
       setSearchQuery: (query) => set({ searchQuery: query }),
       setSelectedResourceId: (id) => set({ selectedResourceId: id }),
       setActivePreset: (preset) => set({ activePreset: preset }),
+      setEnableNamespaceProjection: (enable) => set({ enableNamespaceProjection: enable }),
       
       addSavedConnection: (conn) => set((state) => {
         // Check if exists to update instead of duplicate
@@ -147,6 +151,7 @@ export const useSettingsStore = create<SettingsStore>()(
         hiddenLinkTypes: state.hiddenLinkTypes,
         statusFilters: state.statusFilters,
         activePreset: state.activePreset,
+        enableNamespaceProjection: state.enableNamespaceProjection,
         // focusedResourceKind is NOT persisted intentionally (session only)
       }), // Only persist these fields
     }

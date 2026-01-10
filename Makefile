@@ -29,5 +29,6 @@ frontend-build:
 frontend-run:
 	cd frontend && npm run dev
 
-# Dev (Run backend in dev mode)
-dev: backend-dev frontend-run
+# Dev (Run backend and frontend in parallel)
+dev:
+	$(MAKE) -j2 backend-dev frontend-run

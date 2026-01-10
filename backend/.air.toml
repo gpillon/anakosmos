@@ -3,7 +3,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = ["--port=8080"]
+  args_bin = ["--port=8080", "--dev-proxy=http://localhost:5173"]
   bin = "./tmp/main"
   cmd = "go build -o ./tmp/main ."
   delay = 1000
