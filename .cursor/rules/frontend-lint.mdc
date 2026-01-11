@@ -1,0 +1,7 @@
+---
+globs: frontend/**/*.ts,frontend/**/*.tsx
+alwaysApply: false
+---
+# Overview
+
+run the `npm run lint` every edit

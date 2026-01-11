@@ -10,6 +10,7 @@ import {
 import { clsx } from 'clsx';
 import Editor from '@monaco-editor/react';
 import yaml from 'js-yaml';
+import { ErrorModal } from './components/ErrorModal';
 
 type Tab = 'overview' | 'metadata' | 'events' | 'yaml';
 
@@ -24,12 +25,14 @@ export const Sidebar: React.FC = () => {
   const [yamlContent, setYamlContent] = useState<string>('');
   const [isYamlLoading, setIsYamlLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [errorModal, setErrorModal] = useState<{ open: boolean, error: string }>({ open: false, error: '' });
 
   const resource = selectedResourceId ? resources[selectedResourceId] : null;
 
   // Clear feedback on tab change or resource change
   useEffect(() => {
       setFeedback(null);
+      setErrorModal({ open: false, error: '' });
   }, [activeTab, resource]);
 
   // Poll for events when tab is active
@@ -92,7 +95,45 @@ export const Sidebar: React.FC = () => {
             // Auto hide success after 3s
             setTimeout(() => setFeedback(null), 3000);
         } catch (e: any) {
-            setFeedback({ type: 'error', message: e.message || 'Update failed' });
+            let shortError = 'Update failed';
+            let fullErrorForModal = e.message || JSON.stringify(e, null, 2);
+
+            // Handle structured ApiError
+            if (e.details && typeof e.details === 'object') {
+                // e.message already contains details.message if available due to ApiError constructor logic
+                // But user wants specifically:
+                // 1. Sidebar toast: "message" field
+                // 2. Modal: Full JSON
+                
+                if (e.details.message) {
+                    shortError = e.details.message;
+                }
+                
+                // Pretty print the full JSON details for the modal
+                fullErrorForModal = JSON.stringify(e.details, null, 2);
+            } else {
+                 // Fallback parsing for legacy errors
+                 try {
+                    const jsonMatch = (e.message || '').match(/\{.*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (parsed.message) {
+                            shortError = parsed.message;
+                        }
+                        fullErrorForModal = JSON.stringify(parsed, null, 2);
+                    } else {
+                        shortError = e.message;
+                    }
+                } catch { 
+                    shortError = e.message;
+                }
+            }
+
+            // Always show modal for structured errors or long errors
+            // Use the short extracted message for the feedback toast
+            setErrorModal({ open: true, error: fullErrorForModal });
+            setFeedback({ type: 'error', message: shortError });
+            
         } finally {
             setIsYamlLoading(false);
         }
@@ -103,6 +144,14 @@ export const Sidebar: React.FC = () => {
   const isUnhealthy = resource.health ? (resource.health === 'error' || resource.health === 'warning') : (resource.status !== 'Running' && resource.status !== 'Ready' && resource.status !== 'Active' && resource.status !== 'Available');
 
   return (
+    <>
+    <ErrorModal 
+        isOpen={errorModal.open} 
+        onClose={() => setErrorModal({ ...errorModal, open: false })}
+        title={`Failed to apply ${resource.kind}`}
+        error={errorModal.error}
+    />
+    
     <div className={clsx(
         "absolute top-0 right-0 h-full bg-slate-900/95 backdrop-blur-xl border-l border-slate-700/50 text-slate-100 shadow-2xl flex flex-col z-20 transition-all duration-300",
         activeTab === 'yaml' ? "w-[800px]" : "w-96"
@@ -333,6 +382,7 @@ export const Sidebar: React.FC = () => {
         )}
       </div>
     </div>
+    </>
   );
 };
 

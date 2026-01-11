@@ -1,6 +1,7 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useRef } from 'react';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
+import { useFrame } from '@react-three/fiber';
 
 /**
  * Computes the Convex Hull of a set of points (Jarvis March / Gift Wrapping).
@@ -135,24 +136,50 @@ const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => 
   );
 };
 
-export const NamespaceProjections: React.FC<any> = ({ resources, positions }) => {
-  const groups = useMemo(() => {
-    const map = new Map<string, THREE.Vector3[]>();
-    
-    Object.values(resources as Record<string, any>).forEach(res => {
-      const pos = positions[res.id];
-      if (!pos || !res.namespace) return;
+// Special key for cluster-scoped resources (no namespace)
+const CLUSTER_SCOPED_LABEL = 'Cluster';
+
+export const NamespaceProjections: React.FC<{ 
+  resources: any;
+  positionsRef: React.RefObject<Record<string, [number, number, number]>>;
+}> = ({ resources, positionsRef }) => {
+  const [groups, setGroups] = useState<Map<string, THREE.Vector3[]>>(new Map());
+  const lastUpdateRef = useRef(0);
+
+  useFrame((state) => {
+    // Update every 0.2s (5 FPS) to save CPU
+    if (state.clock.elapsedTime - lastUpdateRef.current > 0.2) {
+      lastUpdateRef.current = state.clock.elapsedTime;
+
+      const map = new Map<string, THREE.Vector3[]>();
+      let hasData = false;
       
-      if (!map.has(res.namespace)) {
-        map.set(res.namespace, []);
+      Object.values(resources as Record<string, any>).forEach((res: any) => {
+        const pos = positionsRef.current[res.id];
+        if (!pos) return;
+        
+        // Use special label for cluster-scoped resources (no namespace)
+        const nsKey = res.namespace || CLUSTER_SCOPED_LABEL;
+        
+        if (!map.has(nsKey)) {
+          map.set(nsKey, []);
+        }
+        map.get(nsKey)!.push(new THREE.Vector3(pos[0], 0, pos[2]));
+        hasData = true;
+      });
+      
+      if (hasData) {
+          setGroups(map);
       }
-      map.get(res.namespace)!.push(new THREE.Vector3(pos[0], 0, pos[2]));
-    });
-    
-    return map;
-  }, [resources, positions]);
+    }
+  });
 
   const stringToColor = (str: string) => {
+    // Special color for cluster-scoped zone
+    if (str === CLUSTER_SCOPED_LABEL) {
+      return '#64748b'; // Slate gray for cluster resources
+    }
+    
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
         hash = str.charCodeAt(i) + ((hash << 5) - hash);

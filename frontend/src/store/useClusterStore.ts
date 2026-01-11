@@ -9,11 +9,12 @@ interface ClusterStore {
   connectionError: string | null;
   client: KubeClient | null;
   
-  connect: (mode: 'mock' | 'proxy' | 'custom', url?: string, token?: string) => Promise<void>;
+  connect: (mode: 'proxy' | 'custom', url?: string, token?: string) => Promise<void>;
   checkConnection: (url: string) => Promise<boolean>;
   disconnect: () => void;
   refresh: () => Promise<void>;
   updateResource: (action: 'ADDED' | 'MODIFIED' | 'DELETED', resource: ClusterResource) => void;
+  updateResourceRaw: (resourceId: string, raw: any) => void;
 }
 
 export const useClusterStore = create<ClusterStore>((set, get) => ({
@@ -22,6 +23,29 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   isConnected: false,
   connectionError: null,
   client: null,
+
+  // Update only the raw field of a resource (from single resource watch)
+  updateResourceRaw: (resourceId, raw) => {
+    set(state => {
+      const resource = state.resources[resourceId];
+      if (!resource) return state;
+      
+      return {
+        resources: {
+          ...state.resources,
+          [resourceId]: {
+            ...resource,
+            raw,
+            // Also update any fields that might have changed
+            status: raw?.status?.phase || raw?.status?.availableReplicas !== undefined 
+              ? (raw.status.availableReplicas === raw.status.replicas ? 'Available' : 'Progressing')
+              : resource.status,
+            labels: raw?.metadata?.labels || resource.labels,
+          }
+        }
+      };
+    });
+  },
 
   updateResource: (action, res) => {
     set(state => {
@@ -36,20 +60,15 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         }
 
         // ADDED or MODIFIED
+        
+        // Preserve raw data if missing in update (because backend sends simplified object)
+        const oldRes = newResources[res.id];
+        if (oldRes && oldRes.raw && !res.raw) {
+            res.raw = oldRes.raw;
+        }
+
         newResources[res.id] = res;
 
-        // If it's a new resource or links changed, we might need to update links.
-        // The simple way is: remove old links for this resource, add new ones from ownerRefs.
-        // But links are bidirectional in our model (source/target).
-        // Wait, our backend 'simplifyObject' sends ownerRefs as IDs.
-        
-        // 1. Remove old outgoing links (where source is this resource)
-        // We keep incoming links (where target is this resource) unless the other resource updates?
-        // Actually, 'owner' links: Pod -> Node. If Pod updates, we update that link.
-        // Service -> Pod links are 'network'. Backend doesn't send those in the simplified object yet?
-        // Wait, backend 'simplifyObject' sends ownerRefs. It does NOT send service selectors or volume links yet.
-        // So for now, we only get owner links update.
-        
         // Filter out old outgoing links for this resource
         const keptLinks = newLinks.filter(l => l.source !== res.id);
         
@@ -66,6 +85,39 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
             if (node) {
                  keptLinks.push({ source: res.id, target: node.id, type: 'owner' });
             }
+        }
+
+        // SPECIAL HANDLING FOR SERVICE -> POD LINKS (Network)
+        // 1. If this is a Service, find matching Pods
+        if (res.kind === 'Service' && res.raw?.spec?.selector) {
+            Object.values(newResources).forEach(r => {
+                if (r.kind === 'Pod' && r.namespace === res.namespace) {
+                    const match = Object.entries(res.raw.spec.selector).every(([k, v]) => r.labels[k as string] === v);
+                    if (match) {
+                        keptLinks.push({ source: res.id, target: r.id, type: 'network' });
+                    }
+                }
+            });
+        }
+
+        // 2. If this is a Pod, update incoming Service links
+        if (res.kind === 'Pod') {
+             // Remove incoming network links for this Pod (to avoid stale links if labels changed)
+             for (let i = keptLinks.length - 1; i >= 0; i--) {
+                if (keptLinks[i].target === res.id && keptLinks[i].type === 'network') {
+                    keptLinks.splice(i, 1);
+                }
+             }
+
+             // Find Services that should link to this Pod
+             Object.values(newResources).forEach(r => {
+                 if (r.kind === 'Service' && r.namespace === res.namespace && r.raw?.spec?.selector) {
+                      const match = Object.entries(r.raw.spec.selector).every(([k, v]) => res.labels[k as string] === v);
+                      if (match) {
+                          keptLinks.push({ source: r.id, target: res.id, type: 'network' });
+                      }
+                 }
+             });
         }
         
         return { resources: newResources, links: keptLinks };
@@ -89,11 +141,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       set({ connectionError: null });
       const client = new KubeClient(mode, url, token);
       
-      // If not mock, maybe do a quick check first?
-      if (mode !== 'mock') {
-         const isReachable = await client.checkConnection();
-         if (!isReachable) throw new Error('Failed to reach server');
-      }
+      const isReachable = await client.checkConnection();
+      if (!isReachable) throw new Error('Failed to reach server');
 
       const data = await client.getClusterResources();
       
@@ -105,15 +154,13 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       });
 
       // Start Watch
-      if (mode !== 'mock') {
-         client.startWatch((event) => {
-             // Handle Watch Event
-             const { type, resource } = event;
-             if (type && resource) {
-                 get().updateResource(type, resource);
-             }
-         });
-      }
+      client.startWatch((event) => {
+          // Handle Watch Event
+          const { type, resource } = event;
+          if (type && resource) {
+              get().updateResource(type, resource);
+          }
+      });
 
     } catch (e: any) {
       console.error('Connection failed:', e);

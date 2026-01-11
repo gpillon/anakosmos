@@ -11,6 +11,8 @@ export interface ClusterResource {
   // Dynamic metrics or other props
   cpu?: string;
   memory?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  raw?: any; // The raw Kubernetes object
 }
 
 export interface ClusterLink {

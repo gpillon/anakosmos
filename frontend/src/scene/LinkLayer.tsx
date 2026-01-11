@@ -1,27 +1,36 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
+import { useFrame } from '@react-three/fiber';
 import { useClusterStore } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { shouldShowResource } from '../logic/LayoutEngine';
+import type { ClusterLink } from '../api/types';
 
 interface LinkLayerProps {
-  positions: Record<string, [number, number, number]>;
+  positionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
 }
 
-export const LinkLayer: React.FC<LinkLayerProps> = ({ positions }) => {
+export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
   const { resources, links } = useClusterStore();
   const hiddenLinkTypes = useSettingsStore(state => state.hiddenLinkTypes);
   const hiddenResourceKinds = useSettingsStore(state => state.hiddenResourceKinds);
   const statusFilters = useSettingsStore(state => state.statusFilters);
   const selectedResourceId = useSettingsStore(state => state.selectedResourceId);
+  
+  // Need filtered context to hide orphan links if nodes are filtered out by search/namespace
+  const searchQuery = useSettingsStore(state => state.searchQuery);
+  const filterNamespaces = useSettingsStore(state => state.filterNamespaces);
+  const hideSystemNamespaces = useSettingsStore(state => state.hideSystemNamespaces);
+  const activePreset = useSettingsStore(state => state.activePreset);
 
-  // Group links by type to use different colors/materials in a single batch
-  // or just use one big LineSegments with vertex colors.
-  // Vertex colors is best for single draw call.
+  const geometryRef = useRef<THREE.BufferGeometry>(null);
 
-  const { geometry } = useMemo(() => {
-    const points: number[] = [];
-    const colors: number[] = [];
-    
+  // Pre-compute visible links and colors. 
+  // This memo only runs when topology or filtering settings change, not on position updates.
+  const { visibleLinks, colors, count } = useMemo(() => {
+    const validLinks: ClusterLink[] = [];
+    const colorArray: number[] = [];
+
     // Helper to get color
     const getColor = (type: string, dimmed: boolean) => {
         if (dimmed) return [0.2, 0.2, 0.2]; // Very dim gray
@@ -34,17 +43,19 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positions }) => {
         }
     };
 
-    let visibleLinksCount = 0;
-
     links.forEach(link => {
-      const start = positions[link.source];
-      const end = positions[link.target];
       const sourceRes = resources[link.source];
       const targetRes = resources[link.target];
 
-      if (!start || !end || !sourceRes || !targetRes) return;
+      if (!sourceRes || !targetRes) return;
       if (hiddenLinkTypes.includes(link.type)) return;
       if (hiddenResourceKinds.includes(sourceRes.kind) || hiddenResourceKinds.includes(targetRes.kind)) return;
+
+      // Check if nodes are visible according to current filters (Search, Namespace, etc)
+      const isSourceVisible = shouldShowResource(sourceRes, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters);
+      const isTargetVisible = shouldShowResource(targetRes, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters);
+      
+      if (!isSourceVisible || !isTargetVisible) return;
 
       const sourceStatusFilter = statusFilters[sourceRes.kind]?.[sourceRes.status] || 'default';
       const targetStatusFilter = statusFilters[targetRes.kind]?.[targetRes.status] || 'default';
@@ -58,23 +69,79 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positions }) => {
       const dimmed = selectedResourceId !== null && !isConnected;
       const [r, g, b] = getColor(link.type, dimmed);
 
-      // Add segment
-      points.push(...start, ...end);
-      colors.push(r, g, b, r, g, b); // Vertex colors for both ends
-      visibleLinksCount++;
+      validLinks.push(link);
+      colorArray.push(r, g, b, r, g, b); // Two vertices per link
     });
 
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+    return { 
+        visibleLinks: validLinks, 
+        colors: new Float32Array(colorArray),
+        count: validLinks.length 
+    };
+  }, [links, resources, hiddenLinkTypes, hiddenResourceKinds, statusFilters, selectedResourceId, searchQuery, filterNamespaces, hideSystemNamespaces, activePreset]);
 
-    return { geometry: geo, count: visibleLinksCount };
-  }, [links, positions, hiddenLinkTypes, hiddenResourceKinds, statusFilters, selectedResourceId, resources]);
+  // Update positions every frame directly in the buffer attribute
+  useFrame(() => {
+    if (!geometryRef.current) return;
+    
+    const posAttr = geometryRef.current.attributes.position;
+    const array = posAttr.array as Float32Array;
+    let needsUpdate = false;
 
-  if (geometry.attributes.position.count === 0) return null;
+    // We assume the buffer size matches visibleLinks * 6 (2 vertices * 3 coords)
+    // If visibleLinks changed, the geometry was recreated, so size should be correct.
+    
+    for (let i = 0; i < visibleLinks.length; i++) {
+        const link = visibleLinks[i];
+        const start = positionsRef.current[link.source];
+        const end = positionsRef.current[link.target];
+
+        if (start && end) {
+            const idx = i * 6;
+            // Start Point
+            array[idx] = start[0];
+            array[idx+1] = start[1];
+            array[idx+2] = start[2];
+            
+            // End Point
+            array[idx+3] = end[0];
+            array[idx+4] = end[1];
+            array[idx+5] = end[2];
+            
+            needsUpdate = true;
+        } else {
+            // Collapse line to 0 if positions not ready
+            const idx = i * 6;
+            array.fill(0, idx, idx + 6);
+        }
+    }
+
+    if (needsUpdate) {
+        posAttr.needsUpdate = true;
+        // Recompute bounding sphere occasionally if needed, but for lines usually strict frustum culling isn't critical or we set big bounds
+        if (!geometryRef.current.boundingSphere) {
+             geometryRef.current.computeBoundingSphere();
+        }
+    }
+  });
+
+  if (count === 0) return null;
 
   return (
-    <lineSegments geometry={geometry}>
+    <lineSegments>
+      <bufferGeometry ref={geometryRef}>
+        <bufferAttribute 
+            attach="attributes-position" 
+            count={count * 2} 
+            args={[new Float32Array(count * 6), 3]}
+            usage={THREE.DynamicDrawUsage} 
+        />
+        <bufferAttribute 
+            attach="attributes-color" 
+            count={count * 2} 
+            args={[colors, 3]} 
+        />
+      </bufferGeometry>
       <lineBasicMaterial vertexColors transparent opacity={0.4} linewidth={1} />
     </lineSegments>
   );

@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { ClusterScene } from './scene/ClusterScene';
 import { HUD } from './ui/HUD';
 import { Sidebar } from './ui/Sidebar';
@@ -10,17 +9,11 @@ import { useKeyboardShortcuts } from './store/useKeyboardShortcuts';
 import { useClusterStore } from './store/useClusterStore';
 
 import { TerminalWindow } from './ui/TerminalWindow';
+import { ResourceDetailsWindow } from './ui/ResourceDetailsWindow';
 
 function App() {
   useKeyboardShortcuts();
-  const { isConnected, connect } = useClusterStore();
-
-  useEffect(() => {
-    // Check for mock environment variable
-    if (import.meta.env.VITE_MOCK === 'true') {
-      connect('mock');
-    }
-  }, [connect]);
+  const { isConnected } = useClusterStore();
 
   if (!isConnected) {
     return <ConnectionScreen />;
@@ -34,6 +27,7 @@ function App() {
       <ResourceLegend />
       <Sidebar />
       <TerminalWindow />
+      <ResourceDetailsWindow />
       <Onboarding />
     </div>
   );

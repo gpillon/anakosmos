@@ -63,7 +63,7 @@ func main() {
 		k8s.HandleExec(execConfig, w, r)
 	})
 
-	// Watch Handler
+	// Watch Handler (all resources - simplified)
 	http.HandleFunc("/api/sock/watch", func(w http.ResponseWriter, r *http.Request) {
 		targetUrl := r.URL.Query().Get("target")
 		token := r.URL.Query().Get("token")
@@ -84,6 +84,29 @@ func main() {
 			return
 		}
 		k8s.HandleWatch(watchConfig, w, r)
+	})
+
+	// Single Resource Watch Handler (full object data)
+	http.HandleFunc("/api/sock/watch/resource", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		var watchConfig *rest.Config
+		if targetUrl != "" {
+			watchConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			watchConfig = config
+		}
+
+		if watchConfig == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return
+		}
+		k8s.HandleSingleWatch(watchConfig, w, r)
 	})
 
 	// Custom Proxy Handler (Dynamic Target)

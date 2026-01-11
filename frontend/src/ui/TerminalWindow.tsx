@@ -46,7 +46,7 @@ export const TerminalWindow: React.FC = () => {
         )}>
         {/* Header / Tab Bar */}
         <div className="flex items-center bg-slate-900 border-b border-slate-800 h-12 shrink-0">
-            <div className="flex-1 flex overflow-x-auto scrollbar-none h-full">
+            <div className="flex-1 flex overflow-x-auto h-full">
             {sessions.map(session => (
                 <div 
                 key={session.id}

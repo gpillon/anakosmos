@@ -3,6 +3,99 @@ import { useClusterStore } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { Layers, Activity, Search, Filter, X, EyeOff } from 'lucide-react';
 import clsx from 'clsx';
+import { useThree, useFrame } from '@react-three/fiber';
+
+// Stats Component that can optionally hook into R3F if placed inside Canvas, 
+// or accept stats props if placed outside. 
+// Since HUD is outside Canvas usually, we can't use useThree directly here for render stats unless we pass them or use a global store.
+// But user requested ALT+I to show stats IN HUD.
+
+// Let's create a separate Stats listener that lives in Canvas and updates a store or state that HUD can read?
+// Or simpler: We keep the Stats logic isolated but render it within the HUD structure IF it's active.
+
+// Actually, to get GL stats (draw calls etc), we NEED to be inside Canvas context.
+// But HUD is typically overlay HTML.
+// Solution: Create a "StatsListener" component inside Canvas that writes to a shared store (e.g. zustand),
+// and HUD reads from that store.
+
+// For now, let's just add the simple logic: 
+// 1. We'll use a local state in HUD for visibility.
+// 2. But we can't get GL stats easily if HUD is outside Canvas.
+//
+// If HUD is outside Canvas (which it seems to be based on file structure implyng UI overlay), 
+// we need a bridge.
+//
+// Let's define a tiny store for stats first.
+import { create } from 'zustand';
+
+interface StatsState {
+    fps: number;
+    frameTime: number;
+    calls: number;
+    triangles: number;
+    points: number;
+    lines: number;
+    activeObjects: number;
+    geometries: number;
+    textures: number;
+    setStats: (s: Partial<StatsState>) => void;
+}
+
+export const useStatsStore = create<StatsState>((set) => ({
+    fps: 0, frameTime: 0, calls: 0, triangles: 0, points: 0, lines: 0, activeObjects: 0, geometries: 0, textures: 0,
+    setStats: (s) => set(s)
+}));
+
+// Component to be placed INSIDE Canvas to report stats
+export const SceneStatsReporter: React.FC = () => {
+    const setStats = useStatsStore(state => state.setStats);
+    const gl = useThree(state => state.gl);
+    const scene = useThree(state => state.scene);
+    const lastTimeRef = useRef(performance.now());
+    const frameCountRef = useRef(0);
+
+    // Disable autoReset to allow accumulating stats across multiple render passes (EffectComposer)
+    useEffect(() => {
+        const originalAutoReset = gl.info.autoReset;
+        gl.info.autoReset = false;
+        return () => { gl.info.autoReset = originalAutoReset; };
+    }, [gl]);
+
+    // Use high priority to run before render, allowing us to capture previous frame stats and reset
+    useFrame(() => {
+        const now = performance.now();
+        frameCountRef.current++;
+        
+        // Update stats every 500ms
+        if (now - lastTimeRef.current >= 500) {
+            const delta = now - lastTimeRef.current;
+            const fps = Math.round((frameCountRef.current * 1000) / delta);
+            const frameTime = delta / frameCountRef.current;
+            
+            let objectCount = 0;
+            scene.traverse(() => objectCount++);
+
+            setStats({
+                fps,
+                frameTime: Number(frameTime.toFixed(2)),
+                calls: gl.info.render.calls,
+                triangles: gl.info.render.triangles,
+                points: gl.info.render.points,
+                lines: gl.info.render.lines,
+                geometries: gl.info.memory.geometries,
+                textures: gl.info.memory.textures,
+                activeObjects: objectCount,
+            });
+            lastTimeRef.current = now;
+            frameCountRef.current = 0;
+        }
+
+        // Manually reset stats at the beginning of each frame (after reading previous frame's stats)
+        gl.info.reset();
+    }, -1000);
+    
+    return null;
+};
 
 export const HUD: React.FC = () => {
   const resources = useClusterStore(state => state.resources);
@@ -18,6 +111,21 @@ export const HUD: React.FC = () => {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [nsSearch, setNsSearch] = useState(''); // Local state for namespace filter
   const filterRef = useRef<HTMLDivElement>(null);
+  
+  // Debug / Stats state
+  const [showStats, setShowStats] = useState(false);
+  const stats = useStatsStore();
+
+  // Toggle Stats with ALT+I
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey && (e.key.toLowerCase() === 'i' || e.code === 'KeyI')) {
+        setShowStats(v => !v);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Close filter dropdown when clicking outside
   useEffect(() => {
@@ -32,9 +140,6 @@ export const HUD: React.FC = () => {
 
   // Calculate filtered stats
   const filteredResources = useMemo(() => {
-      // Logic duplicated here for stats, but actual filtering happens in ClusterScene/Layout
-      // We'll just show total raw counts here for now or update to reflect filtered view?
-      // Let's show Global Counts vs Filtered Counts could be nice, but for now stick to simple Global
       return Object.values(resources);
   }, [resources]);
 
@@ -42,7 +147,7 @@ export const HUD: React.FC = () => {
   const nodeCount = filteredResources.filter(r => r.kind === 'Node').length;
   const podCount = filteredResources.filter(r => r.kind === 'Pod').length;
 
-  // Extract unique namespaces
+  // ... (existing namespaces logic) ...
   const namespaces = useMemo(() => {
     const ns = new Set<string>();
     Object.values(resources).forEach(r => {
@@ -57,15 +162,8 @@ export const HUD: React.FC = () => {
 
   const visibleNamespaces = useMemo(() => {
       let filtered = namespaces;
-      
-      if (hideSystemNamespaces) {
-          filtered = filtered.filter(ns => !isSystemNamespace(ns));
-      }
-      
-      if (nsSearch) {
-          filtered = filtered.filter(ns => ns.toLowerCase().includes(nsSearch.toLowerCase()));
-      }
-      
+      if (hideSystemNamespaces) filtered = filtered.filter(ns => !isSystemNamespace(ns));
+      if (nsSearch) filtered = filtered.filter(ns => ns.toLowerCase().includes(nsSearch.toLowerCase()));
       return filtered;
   }, [namespaces, hideSystemNamespaces, nsSearch]);
 
@@ -82,13 +180,39 @@ export const HUD: React.FC = () => {
   };
 
   return (
+    <>
+    {/* Debug Stats Overlay - Rendered as part of HUD now */}
+    {showStats && (
+        <div className="absolute top-20 right-4 w-64 bg-slate-900/95 border border-slate-700 p-4 rounded-lg shadow-2xl font-mono text-xs text-slate-200 backdrop-blur-md z-50 pointer-events-none">
+            <div className="flex justify-between items-center mb-3 border-b border-slate-700 pb-2">
+                <span className="font-bold text-slate-400">PERFORMANCE</span>
+                <span className="text-[10px] text-slate-600">ALT+I to close</span>
+            </div>
+            <div className="space-y-2">
+                <div className="flex justify-between"><span className="text-slate-500">FPS</span><span className={stats.fps < 30 ? "text-red-400" : "text-emerald-400"}>{stats.fps}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Frame Time</span><span>{stats.frameTime}ms</span></div>
+                <div className="h-px bg-slate-800 my-2" />
+                <div className="flex justify-between"><span className="text-slate-500">Draw Calls</span><span>{stats.calls}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Triangles</span><span>{stats.triangles > 1000 ? (stats.triangles / 1000).toFixed(1) + 'k' : stats.triangles}</span></div>
+                <div className="h-px bg-slate-800 my-2" />
+                <div className="flex justify-between"><span className="text-slate-500">Total Nodes</span><span>{stats.activeObjects}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Geometries</span><span>{stats.geometries}</span></div>
+                <div className="flex justify-between"><span className="text-slate-500">Textures</span><span>{stats.textures}</span></div>
+            </div>
+        </div>
+    )}
+
     <div className="absolute top-0 left-0 w-full p-4 pointer-events-none z-10 grid grid-cols-[1fr_auto_1fr] items-start gap-4">
       {/* Left: Branding & Stats */}
       <div className="pointer-events-auto flex flex-col gap-3 items-start">
         <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2 drop-shadow-md">
           <Layers className="text-blue-500" />
           Kube3D
-          <button className="p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-colors ml-1" title="Info">
+          <button 
+            className="p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-colors ml-1" 
+            title="Toggle Performance Stats (Alt+I)"
+            onClick={() => setShowStats(!showStats)}
+          >
              <Activity size={16} /> 
           </button>
         </h1>
@@ -222,5 +346,6 @@ export const HUD: React.FC = () => {
       {/* Right: Empty (for balance) */}
       <div></div>
     </div>
+    </>
   );
 };

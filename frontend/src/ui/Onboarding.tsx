@@ -1,17 +1,10 @@
 import React, { useState } from 'react';
-import { X, MousePointer, Info } from 'lucide-react';
+import { X, MousePointer } from 'lucide-react';
 
 export const Onboarding: React.FC = () => {
   const [visible, setVisible] = useState(true);
 
-  if (!visible) return (
-    <button 
-      onClick={() => setVisible(true)}
-      className="absolute bottom-4 left-4 p-2 bg-slate-800 rounded-full text-slate-400 hover:text-white hover:bg-slate-700 transition-all z-20 shadow-lg"
-    >
-      <Info size={24} />
-    </button>
-  );
+  if (!visible) return null;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">

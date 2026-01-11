@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useClusterStore } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { SavedConnection } from '../store/useSettingsStore';
-import { Server, LayoutDashboard, Database, AlertCircle, ArrowRight, Key, CheckCircle2, History, Trash2, ShieldAlert } from 'lucide-react';
+import { Server, Database, AlertCircle, ArrowRight, Key, CheckCircle2, History, Trash2, ShieldAlert } from 'lucide-react';
 
 export const ConnectionScreen: React.FC = () => {
   const { connect, checkConnection, connectionError } = useClusterStore();
@@ -15,7 +15,7 @@ export const ConnectionScreen: React.FC = () => {
   
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'select' | 'auth'>('select');
-  const [activeMode, setActiveMode] = useState<'proxy' | 'custom' | 'mock' | null>(null);
+  const [activeMode, setActiveMode] = useState<'proxy' | 'custom' | null>(null);
   const [inCluster, setInCluster] = useState(false);
 
   React.useEffect(() => {
@@ -29,15 +29,13 @@ export const ConnectionScreen: React.FC = () => {
       });
   }, []);
 
-  const handleConnect = async (mode: 'mock' | 'proxy' | 'custom', url?: string) => {
+  const handleConnect = async (mode: 'proxy' | 'custom', url?: string) => {
     setActiveMode(mode);
     setIsLoading(true);
     const targetUrl = url || customUrl;
 
     try {
-      if (mode === 'mock') {
-        await connect('mock');
-      } else if (mode === 'proxy') {
+      if (mode === 'proxy') {
         await connect('proxy');
       } else if (mode === 'custom') {
         // Step 1: Verify Server
@@ -202,21 +200,6 @@ export const ConnectionScreen: React.FC = () => {
                 </div>
               </div>
             )}
-
-            {/* Option 3: Mock Mode */}
-            <button
-              onClick={() => handleConnect('mock')}
-              disabled={isLoading}
-              className="w-full p-4 flex items-center gap-4 bg-slate-700/50 hover:bg-slate-700 hover:border-emerald-500 border border-transparent rounded-lg transition-all group text-left"
-            >
-              <div className="p-3 bg-emerald-500/20 rounded-lg group-hover:bg-emerald-500/30 text-emerald-400">
-                <LayoutDashboard className="w-6 h-6" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200">Mock Mode</h3>
-                <p className="text-sm text-slate-400">Use simulated data</p>
-              </div>
-            </button>
           </div>
         )}
 

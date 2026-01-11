@@ -46,6 +46,15 @@ export const ResourceLegend: React.FC = () => {
     return KIND_CONFIG.filter(item => item.label.toLowerCase().includes(search.toLowerCase()));
   }, [search]);
 
+  // Count resources by kind
+  const kindCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    Object.values(resources).forEach(r => {
+      counts[r.kind] = (counts[r.kind] || 0) + 1;
+    });
+    return counts;
+  }, [resources]);
+
   // Extract unique statuses per kind
   const kindStatuses = useMemo(() => {
     const map: Record<string, string[]> = {};
@@ -71,7 +80,7 @@ export const ResourceLegend: React.FC = () => {
   };
 
   return (
-    <div className="absolute bottom-8 left-8 z-50 flex flex-col items-start max-h-[60vh] transition-all duration-300">
+    <div className="absolute bottom-14 left-4 z-40 flex flex-col items-start max-h-[60vh] transition-all duration-300">
       <div className={clsx(
         "bg-slate-900/95 backdrop-blur-md border border-slate-700/50 rounded-lg shadow-2xl overflow-hidden flex flex-col transition-all duration-300",
         isExpanded ? "w-80" : "w-10 h-10 rounded-full"
@@ -257,6 +266,11 @@ export const ResourceLegend: React.FC = () => {
                         
                         <span className={clsx("flex-1 text-xs font-medium truncate", isHidden ? "text-slate-500 line-through decoration-slate-600" : "text-slate-300")}>
                             {item.label}
+                            {kindCounts[item.kind] > 0 && (
+                              <span className="ml-1.5 text-slate-500 font-normal">
+                                ({kindCounts[item.kind]})
+                              </span>
+                            )}
                         </span>
 
                         <div className="opacity-0 group-hover:opacity-100 transition-opacity">

@@ -1,20 +1,37 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import type { ClusterResource, ClusterLink } from './types';
 
+export class ApiError extends Error {
+  public status: number;
+  public details: any; // Contains the raw JSON body if available
+
+  constructor(message: string, status: number, details: string) {
+    super(message);
+    this.status = status;
+    try {
+        this.details = JSON.parse(details);
+        // Try to update message if details has a message
+        if (this.details.message) {
+            this.message = this.details.message;
+        }
+    } catch {
+        this.details = details;
+    }
+  }
+}
+
 export class KubeClient {
-  public mode: 'mock' | 'proxy' | 'custom' = 'mock';
+  public mode: 'proxy' | 'custom' = 'proxy';
   public baseUrl: string;
   public token?: string;
 
-  constructor(mode: 'mock' | 'proxy' | 'custom' = 'mock', baseUrl: string = '/api', token?: string) {
+  constructor(mode: 'proxy' | 'custom' = 'proxy', baseUrl: string = '/api', token?: string) {
     this.mode = mode;
     this.baseUrl = baseUrl;
     this.token = token;
   }
 
   async checkConnection(): Promise<boolean> {
-    if (this.mode === 'mock') return true;
-
     try {
       let url: string;
     const headers: Record<string, string> = {};
@@ -49,10 +66,6 @@ export class KubeClient {
   }
 
   async getClusterResources(): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
-    if (this.mode === 'mock') {
-      return this.fetchFromMock();
-    }
-
     if (this.mode === 'proxy' || this.mode === 'custom') {
       try {
         return await this.fetchFromApi();
@@ -63,34 +76,6 @@ export class KubeClient {
     }
 
     throw new Error('Unknown mode');
-  }
-
-  private async fetchFromMock(): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
-    try {
-      const [pods, nodes, services, deployments] = await Promise.all([
-        fetch('/mock/pods.json').then(r => r.json()),
-        fetch('/mock/nodes.json').then(r => r.json()),
-        fetch('/mock/services.json').then(r => r.json()),
-        fetch('/mock/deployments.json').then(r => r.json())
-      ]);
-      return this.transformK8sData({
-          nodes, 
-          pods, 
-          services, 
-          deployments,
-          statefulsets: { items: [] },
-          daemonsets: { items: [] },
-          replicasets: { items: [] },
-          ingresses: { items: [] },
-          pvcs: { items: [] },
-          configmaps: { items: [] },
-          secrets: { items: [] },
-          storageclasses: { items: [] }
-      });
-    } catch (e) {
-      console.error('Failed to fetch from mock', e);
-      return { resources: {}, links: [] };
-    }
   }
 
   private async fetchFromApi(): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
@@ -181,19 +166,6 @@ export class KubeClient {
   }
 
   async getEvents(namespace: string, uid: string): Promise<any[]> {
-    if (this.mode === 'mock') {
-        // Return some mock events for demo
-        return [
-            {
-                type: 'Normal',
-                reason: 'MockEvent',
-                message: 'This is a mock event because you are in mock mode',
-                lastTimestamp: new Date().toISOString(),
-                count: 1
-            }
-        ];
-    }
-
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         let url: string;
@@ -203,11 +175,7 @@ export class KubeClient {
         const query = `?fieldSelector=involvedObject.uid=${uid}`;
         const endpoint = namespace 
             ? `api/v1/namespaces/${namespace}/events`
-            : `api/v1/events`; // Fallback to all events or default namespace? 
-            // Ideally involvedObject.uid is unique enough. 
-            // But usually we need --all-namespaces if we don't know the namespace.
-            // Let's assume if namespace is missing (e.g. Node), we query /api/v1/events (which is usually default namespace)
-            // or we might need to query all namespaces if we have permission.
+            : `api/v1/events`; 
         
         if (this.mode === 'custom') {
             url = `/proxy/${endpoint}${query}`;
@@ -231,22 +199,53 @@ export class KubeClient {
     }
   }
 
-  async getYaml(namespace: string, kind: string, name: string): Promise<string> {
-    if (this.mode === 'mock') {
-        return `apiVersion: v1
-kind: ${kind}
-metadata:
-  name: ${name}
-  namespace: ${namespace}
-  creationTimestamp: ${new Date().toISOString()}
-status:
-  phase: Running
-  conditions:
-  - type: Ready
-    status: "True"
-`;
-    }
+  async getResource(namespace: string, kind: string, name: string): Promise<any> {
+    try {
+        const cleanBase = this.baseUrl.replace(/\/+$/, '');
+        let url: string;
+        const headers: Record<string, string> = {
+            'Accept': 'application/json'
+        };
 
+        let endpoint = '';
+        const k = kind.toLowerCase();
+        
+        if (['pod', 'node', 'service', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
+            endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
+        } else if (['deployment', 'statefulset', 'daemonset', 'replicaset'].includes(k)) {
+            endpoint = namespace ? `apis/apps/v1/namespaces/${namespace}/${k}s` : `apis/apps/v1/${k}s`;
+        } else if (['ingress'].includes(k)) {
+            endpoint = namespace ? `apis/networking.k8s.io/v1/namespaces/${namespace}/${k}es` : `apis/networking.k8s.io/v1/${k}es`;
+        } else if (['storageclass'].includes(k)) {
+            endpoint = `apis/storage.k8s.io/v1/${k}es`;
+        } else {
+            endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
+        }
+        
+        endpoint += `/${name}`;
+
+        if (this.mode === 'custom') {
+            url = `/proxy/${endpoint}`;
+            headers['X-Kube-Target'] = cleanBase;
+        } else {
+            url = `${cleanBase}/${endpoint}`;
+        }
+
+        if (this.token && this.token.trim().length > 0) {
+            headers['Authorization'] = `Bearer ${this.token.trim()}`;
+        }
+
+        const res = await fetch(url, { headers });
+        if (!res.ok) throw new Error(`Failed to fetch Resource: ${res.statusText}`);
+        
+        return await res.json();
+    } catch (e) {
+        console.warn('Failed to fetch Resource', e);
+        throw e;
+    }
+  }
+
+  async getYaml(namespace: string, kind: string, name: string): Promise<string> {
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         let url: string;
@@ -255,8 +254,6 @@ status:
         };
 
         // Determine API Group from kind
-        // This is a simplification. Ideally we should look up the resource mapping.
-        // Common mappings:
         let endpoint = '';
         const k = kind.toLowerCase();
         
@@ -290,23 +287,8 @@ status:
         const res = await fetch(url, { headers });
         if (!res.ok) throw new Error(`Failed to fetch YAML: ${res.statusText}`);
         
-        // If we get JSON back despite asking for YAML (some APIs ignore Accept),
-        // we might need to convert it using js-yaml if we were running in Node,
-        // but here we just hope for text/yaml or convert JSON on client.
-        // Actually browsers don't do content negotiation well. 
-        // K8s API returns JSON by default. We probably need to fetch JSON and convert to YAML on client side using js-yaml.
-        // Let's assume we fetch JSON and convert it.
-        
         if (res.headers.get('Content-Type')?.includes('json')) {
             const json = await res.json();
-            // We need a YAML dumper. We'll let the UI component handle the conversion
-            // or we can import js-yaml here. 
-            // Let's just return the JSON object and let the caller stringify it?
-            // No, the signature returns string.
-            // Since we don't want to add heavyweight dependency here if possible...
-            // But we installed js-yaml.
-            // Let's assume the caller will handle JSON->YAML if it receives a JSON string?
-            // Or better: Let's fetch JSON (safest) and convert it in the UI component using js-yaml.
             return JSON.stringify(json);
         }
 
@@ -317,8 +299,6 @@ status:
     }
   }
   async startWatch(onEvent: (event: any) => void): Promise<() => void> {
-    if (this.mode === 'mock') return () => {};
-
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const host = window.location.host;
     const params = new URLSearchParams();
@@ -360,21 +340,77 @@ status:
         }
     };
   }
+
+  /**
+   * Start watching a single resource with full object data
+   * Used for detailed views that need complete, live updates
+   */
+  startSingleResourceWatch(
+    kind: string, 
+    namespace: string, 
+    name: string, 
+    onEvent: (event: { type: string; resource: any }) => void
+  ): () => void {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const params = new URLSearchParams();
+
+    params.append('kind', kind);
+    params.append('namespace', namespace || '');
+    params.append('name', name);
+
+    if (this.mode === 'custom' || this.mode === 'proxy') {
+        const cleanBase = this.baseUrl.replace(/\/+$/, '');
+        if (cleanBase) params.append('target', cleanBase);
+        if (this.token) params.append('token', this.token);
+    }
+    
+    const url = `${protocol}//${host}/api/sock/watch/resource?${params.toString()}`;
+    
+    console.log(`Starting single resource watch: ${kind}/${namespace}/${name}`);
+    
+    let ws: WebSocket | null = new WebSocket(url);
+    
+    ws.onmessage = (msg) => {
+        try {
+            const data = JSON.parse(msg.data);
+            onEvent(data);
+        } catch (e) {
+            console.error('Failed to parse single watch event', e);
+        }
+    };
+    
+    ws.onopen = () => {
+        console.log(`Single resource watch connected: ${kind}/${namespace}/${name}`);
+    };
+    
+    ws.onclose = () => {
+        console.log(`Single resource watch closed: ${kind}/${namespace}/${name}`);
+        ws = null;
+    };
+    
+    ws.onerror = (e) => {
+        console.error('Single resource watch error', e);
+    };
+
+    // Return cleanup function
+    return () => {
+        if (ws) {
+            console.log(`Closing single resource watch: ${kind}/${namespace}/${name}`);
+            ws.close();
+            ws = null;
+        }
+    };
+  }
   
   async applyYaml(namespace: string, kind: string, name: string, yamlContent: string): Promise<void> {
-    if (this.mode === 'mock') {
-        console.log('Mock apply:', yamlContent);
-        return;
-    }
-
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         const headers: Record<string, string> = {
             'Content-Type': 'application/yaml' // Some K8s APIs accept this for PUT
         };
 
-        // Determine API Group from kind (reuse logic from getYaml or better refactor)
-        // For simplicity, reusing logic
+        // Determine API Group from kind
         let endpoint = '';
         const k = kind.toLowerCase();
         
@@ -406,27 +442,6 @@ status:
             headers['Authorization'] = `Bearer ${this.token.trim()}`;
         }
 
-        // Using PUT to replace the resource. 
-        // Note: For PUT to work, the YAML must include the resourceVersion, 
-        // otherwise we get a conflict. Since we fetched the YAML, it should have it unless managedFields was removed and resourceVersion lost?
-        // Actually we stripped managedFields but kept metadata.resourceVersion in the view.
-        // If the user modified it, hopefully they didn't touch resourceVersion.
-        
-        // If we wanted to be safer, we could use PATCH with application/merge-patch+json 
-        // but that requires converting YAML to JSON.
-        // Let's try PUT with YAML first. If K8s complains about JSON, we convert.
-        // Most K8s setups expect JSON body.
-        
-        // Let's convert to JSON to be safe, as fetch body handling for YAML might be tricky 
-        // and K8s API is definitely JSON-first.
-        // We need a YAML parser here if we want to send JSON. 
-        // But we are in KubeClient, we don't want to import 'js-yaml' here if possible to keep it light?
-        // The Sidebar imports 'js-yaml'.
-        // Let's assume the caller passes the string.
-        
-        // Actually, we can just send the body as string with Content-Type: application/yaml.
-        // Kubernetes API supports it.
-        
         const res = await fetch(url, {
             method: 'PUT',
             headers,
@@ -434,8 +449,8 @@ status:
         });
 
         if (!res.ok) {
-            const err = await res.text();
-            throw new Error(`Apply failed: ${res.status} ${res.statusText} - ${err}`);
+            const errText = await res.text();
+            throw new ApiError(`Apply failed: ${res.status} ${res.statusText}`, res.status, errText);
         }
     } catch (e) {
         console.error('Apply YAML failed', e);
@@ -486,7 +501,8 @@ status:
         status: finalStatus,
         labels: item.metadata.labels || {},
         ownerRefs: (item.metadata.ownerReferences || []).map((ref: any) => ref.uid),
-        creationTimestamp: item.metadata.creationTimestamp
+        creationTimestamp: item.metadata.creationTimestamp,
+        raw: item // Store raw object for details view
       };
       
       (item.metadata.ownerReferences || []).forEach((ref: any) => {

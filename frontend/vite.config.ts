@@ -9,7 +9,7 @@ export default defineConfig({
   server: {
     host: true, // Listen on all addresses
     strictPort: true,
-    // hmr: { overlay: true }, // overlay errori nel browser,
+    hmr: { overlay: true }, // overlay errori nel browser,
     port: 5173,
     proxy: {
       '/api': {

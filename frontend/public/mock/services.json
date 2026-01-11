@@ -5,152 +5,36 @@
         "uid": "04ac1afb-0191-450f-b407-8cf897dc587b",
         "name": "app-default-0-svc",
         "namespace": "default",
-        "labels": {
-          "app": "app-default-0"
-        },
+        "labels": { "app": "app-default-0" },
         "creationTimestamp": "2026-01-10T14:17:40.001Z"
       },
       "spec": {
-        "selector": {
-          "app": "app-default-0"
-        }
+        "type": "ClusterIP",
+        "clusterIP": "10.96.0.10",
+        "ports": [
+            { "name": "http", "port": 80, "targetPort": 80, "protocol": "TCP" }
+        ],
+        "selector": { "app": "app-default-0" }
       },
-      "status": {
-        "phase": "Active"
-      }
+      "status": { "loadBalancer": {} }
     },
     {
       "metadata": {
         "uid": "074694a9-e9b6-4765-8abe-e70eea625620",
         "name": "app-default-1-svc",
         "namespace": "default",
-        "labels": {
-          "app": "app-default-1"
-        },
+        "labels": { "app": "app-default-1" },
         "creationTimestamp": "2026-01-10T14:17:40.001Z"
       },
       "spec": {
-        "selector": {
-          "app": "app-default-1"
-        }
+        "type": "NodePort",
+        "clusterIP": "10.96.0.11",
+        "ports": [
+            { "name": "db", "port": 5432, "targetPort": 5432, "nodePort": 30054, "protocol": "TCP" }
+        ],
+        "selector": { "app": "app-default-1" }
       },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "555f0fda-4947-46f7-b431-c9d479535598",
-        "name": "app-kube-system-0-svc",
-        "namespace": "kube-system",
-        "labels": {
-          "app": "app-kube-system-0"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-kube-system-0"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "6edaa2d3-9c54-4606-a131-f81a1c9d99a7",
-        "name": "app-kube-system-1-svc",
-        "namespace": "kube-system",
-        "labels": {
-          "app": "app-kube-system-1"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-kube-system-1"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "81cda821-b66f-4000-b57c-92cfb9201541",
-        "name": "app-monitoring-0-svc",
-        "namespace": "monitoring",
-        "labels": {
-          "app": "app-monitoring-0"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-monitoring-0"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "e04a6194-65b6-4d00-a738-ede6b70d6d94",
-        "name": "app-monitoring-1-svc",
-        "namespace": "monitoring",
-        "labels": {
-          "app": "app-monitoring-1"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-monitoring-1"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "c6ac8523-2bac-4ee1-b540-46a0b1684b30",
-        "name": "app-database-0-svc",
-        "namespace": "database",
-        "labels": {
-          "app": "app-database-0"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-database-0"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
-    },
-    {
-      "metadata": {
-        "uid": "60fde9b1-4224-4577-a2e7-ed4786347265",
-        "name": "app-database-1-svc",
-        "namespace": "database",
-        "labels": {
-          "app": "app-database-1"
-        },
-        "creationTimestamp": "2026-01-10T14:17:40.001Z"
-      },
-      "spec": {
-        "selector": {
-          "app": "app-database-1"
-        }
-      },
-      "status": {
-        "phase": "Active"
-      }
+      "status": { "loadBalancer": {} }
     }
   ]
 }
