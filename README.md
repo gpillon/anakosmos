@@ -5,7 +5,7 @@
 
 A web application that provides a clear, interactive 3D visualization of a Kubernetes cluster.
 
-![Anakosmos Screenshot](https://raw.githubusercontent.com/gpillon/anakosmos/main/docs/screenshot.png)
+![Anakosmos Screenshot](docs/screenshot.png)
 
 ## Features
 
@@ -105,4 +105,4 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+GNU GENERAL PUBLIC LICENSE v3 - see [LICENSE](LICENSE) for details.
