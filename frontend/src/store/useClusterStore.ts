@@ -7,11 +7,15 @@ interface ClusterStore {
   links: ClusterLink[];
   isConnected: boolean;
   connectionError: string | null;
+  loadingProgress: number;
+  loadingMessage: string;
+  isSceneReady: boolean;
   client: KubeClient | null;
   
   connect: (mode: 'proxy' | 'custom', url?: string, token?: string) => Promise<void>;
   checkConnection: (url: string) => Promise<boolean>;
   disconnect: () => void;
+  setSceneReady: (ready: boolean) => void;
   refresh: () => Promise<void>;
   updateResource: (action: 'ADDED' | 'MODIFIED' | 'DELETED', resource: ClusterResource) => void;
   updateResourceRaw: (resourceId: string, raw: any) => void;
@@ -22,7 +26,12 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
   links: [],
   isConnected: false,
   connectionError: null,
+  loadingProgress: 0,
+  loadingMessage: '',
+  isSceneReady: false,
   client: null,
+
+  setSceneReady: (ready) => set({ isSceneReady: ready }),
 
   // Update only the raw field of a resource (from single resource watch)
   updateResourceRaw: (resourceId, raw) => {
@@ -69,8 +78,13 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
         newResources[res.id] = res;
 
-        // Filter out old outgoing links for this resource
-        const keptLinks = newLinks.filter(l => l.source !== res.id);
+        // Filter out old outgoing owner/network links for this resource (preserve config/storage)
+        const keptLinks = newLinks.filter(l => {
+            if (l.source !== res.id) return true;
+            // Keep config and storage links - they're set at initial load and rarely change
+            if (l.type === 'config' || l.type === 'storage') return true;
+            return false;
+        });
         
         // Add new owner links
         res.ownerRefs.forEach(ownerId => {
@@ -138,19 +152,24 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
   connect: async (mode, url, token) => {
     try {
-      set({ connectionError: null });
+      set({ connectionError: null, loadingProgress: 0, loadingMessage: 'Connecting...', isSceneReady: false });
       const client = new KubeClient(mode, url, token);
       
       const isReachable = await client.checkConnection();
       if (!isReachable) throw new Error('Failed to reach server');
 
-      const data = await client.getClusterResources();
+      set({ loadingMessage: 'Fetching resources...' });
+      const data = await client.getClusterResources((progress, message) => {
+          set({ loadingProgress: progress, loadingMessage: message });
+      });
       
       set({ 
         client,
         resources: data.resources,
         links: data.links,
-        isConnected: true 
+        isConnected: true,
+        loadingProgress: 100,
+        loadingMessage: 'Connected'
       });
 
       // Start Watch
@@ -177,7 +196,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
       isConnected: false, 
       client: null, 
       resources: {}, 
-      links: [] 
+      links: [],
+      isSceneReady: false
     });
   },
 

@@ -65,10 +65,10 @@ export class KubeClient {
     }
   }
 
-  async getClusterResources(): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
+  async getClusterResources(onProgress?: (progress: number, message: string) => void): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
     if (this.mode === 'proxy' || this.mode === 'custom') {
       try {
-        return await this.fetchFromApi();
+        return await this.fetchFromApi(onProgress);
       } catch (e) {
         console.error('API fetch failed:', e);
         throw new Error('Failed to reach server');
@@ -78,7 +78,7 @@ export class KubeClient {
     throw new Error('Unknown mode');
   }
 
-  private async fetchFromApi(): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
+  private async fetchFromApi(onProgress?: (progress: number, message: string) => void): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
     try {
       // Helper to fetch list safely (return empty list on failure instead of throwing)
       const fetchList = async (resource: string, group: string) => {
@@ -89,6 +89,34 @@ export class KubeClient {
               return { items: [] };
           }
       };
+
+      const resourcesToFetch = [
+        { key: 'nodes', group: 'v1' },
+        { key: 'pods', group: 'v1' },
+        { key: 'services', group: 'v1' },
+        { key: 'deployments', group: 'apps/v1' },
+        { key: 'statefulsets', group: 'apps/v1' },
+        { key: 'daemonsets', group: 'apps/v1' },
+        { key: 'replicasets', group: 'apps/v1' },
+        { key: 'ingresses', group: 'networking.k8s.io/v1' },
+        { key: 'pvcs', group: 'v1', resourceName: 'persistentvolumeclaims' },
+        { key: 'configmaps', group: 'v1' },
+        { key: 'secrets', group: 'v1' },
+        { key: 'storageclasses', group: 'storage.k8s.io/v1' }
+      ];
+
+      const total = resourcesToFetch.length;
+      let completed = 0;
+
+      const results = await Promise.all(resourcesToFetch.map(async (item) => {
+          const resName = item.resourceName || item.key;
+          const data = await fetchList(resName, item.group);
+          completed++;
+          if (onProgress) {
+              onProgress(Math.round((completed / total) * 100), `Fetching ${item.key}...`);
+          }
+          return data;
+      }));
 
       const [
           nodes, 
@@ -103,20 +131,9 @@ export class KubeClient {
           configmaps,
           secrets,
           storageclasses
-      ] = await Promise.all([
-        fetchList('nodes', 'v1'),
-        fetchList('pods', 'v1'),
-        fetchList('services', 'v1'),
-        fetchList('deployments', 'apps/v1'),
-        fetchList('statefulsets', 'apps/v1'),
-        fetchList('daemonsets', 'apps/v1'),
-        fetchList('replicasets', 'apps/v1'),
-        fetchList('ingresses', 'networking.k8s.io/v1'),
-        fetchList('persistentvolumeclaims', 'v1'),
-        fetchList('configmaps', 'v1'),
-        fetchList('secrets', 'v1'),
-        fetchList('storageclasses', 'storage.k8s.io/v1')
-      ]);
+      ] = results;
+
+      if (onProgress) onProgress(100, 'Processing data...');
 
       return this.transformK8sData({
           nodes, 
@@ -403,6 +420,197 @@ export class KubeClient {
     };
   }
   
+  /**
+   * Check if metrics-server is available
+   */
+  async checkMetricsAvailable(): Promise<boolean> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      if (this.mode === 'custom') {
+        url = `/proxy/apis/metrics.k8s.io/v1beta1`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/apis/metrics.k8s.io/v1beta1`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get metrics for a specific pod
+   */
+  async getPodMetrics(namespace: string, name: string): Promise<{
+    cpu: { usage: number; formatted: string };
+    memory: { usage: number; formatted: string };
+    containers: Array<{
+      name: string;
+      cpu: { usage: number; formatted: string };
+      memory: { usage: number; formatted: string };
+    }>;
+  } | null> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      const endpoint = `apis/metrics.k8s.io/v1beta1/namespaces/${namespace}/pods/${name}`;
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      
+      // Parse metrics
+      let totalCpuNanos = 0;
+      let totalMemoryBytes = 0;
+      const containers: Array<{
+        name: string;
+        cpu: { usage: number; formatted: string };
+        memory: { usage: number; formatted: string };
+      }> = [];
+
+      data.containers?.forEach((container: any) => {
+        const cpuStr = container.usage?.cpu || '0';
+        const memStr = container.usage?.memory || '0';
+        
+        const cpuNanos = this.parseCpuToNanos(cpuStr);
+        const memBytes = this.parseMemoryToBytes(memStr);
+        
+        totalCpuNanos += cpuNanos;
+        totalMemoryBytes += memBytes;
+        
+        containers.push({
+          name: container.name,
+          cpu: { usage: cpuNanos, formatted: this.formatCpu(cpuNanos) },
+          memory: { usage: memBytes, formatted: this.formatMemory(memBytes) }
+        });
+      });
+
+      return {
+        cpu: { usage: totalCpuNanos, formatted: this.formatCpu(totalCpuNanos) },
+        memory: { usage: totalMemoryBytes, formatted: this.formatMemory(totalMemoryBytes) },
+        containers
+      };
+    } catch (e) {
+      console.warn('Failed to fetch pod metrics', e);
+      return null;
+    }
+  }
+
+  /**
+   * Get metrics for a node
+   */
+  async getNodeMetrics(name: string): Promise<{
+    cpu: { usage: number; formatted: string };
+    memory: { usage: number; formatted: string };
+  } | null> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      const endpoint = `apis/metrics.k8s.io/v1beta1/nodes/${name}`;
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) return null;
+
+      const data = await res.json();
+      
+      const cpuNanos = this.parseCpuToNanos(data.usage?.cpu || '0');
+      const memBytes = this.parseMemoryToBytes(data.usage?.memory || '0');
+
+      return {
+        cpu: { usage: cpuNanos, formatted: this.formatCpu(cpuNanos) },
+        memory: { usage: memBytes, formatted: this.formatMemory(memBytes) }
+      };
+    } catch (e) {
+      console.warn('Failed to fetch node metrics', e);
+      return null;
+    }
+  }
+
+  // Helper: Parse CPU string (e.g., "100m", "1", "250000n") to nanocores
+  private parseCpuToNanos(cpuStr: string): number {
+    if (!cpuStr) return 0;
+    const str = cpuStr.toString();
+    if (str.endsWith('n')) return parseInt(str.slice(0, -1), 10);
+    if (str.endsWith('u')) return parseInt(str.slice(0, -1), 10) * 1000;
+    if (str.endsWith('m')) return parseInt(str.slice(0, -1), 10) * 1000000;
+    return parseFloat(str) * 1000000000; // Assume cores
+  }
+
+  // Helper: Parse memory string (e.g., "100Mi", "1Gi", "1000Ki") to bytes
+  private parseMemoryToBytes(memStr: string): number {
+    if (!memStr) return 0;
+    const str = memStr.toString();
+    const units: Record<string, number> = {
+      'Ki': 1024,
+      'Mi': 1024 ** 2,
+      'Gi': 1024 ** 3,
+      'Ti': 1024 ** 4,
+      'K': 1000,
+      'M': 1000 ** 2,
+      'G': 1000 ** 3,
+      'T': 1000 ** 4,
+    };
+    
+    for (const [unit, multiplier] of Object.entries(units)) {
+      if (str.endsWith(unit)) {
+        return parseInt(str.slice(0, -unit.length), 10) * multiplier;
+      }
+    }
+    return parseInt(str, 10); // Assume bytes
+  }
+
+  // Helper: Format CPU nanocores to human-readable
+  private formatCpu(nanos: number): string {
+    if (nanos >= 1000000000) return `${(nanos / 1000000000).toFixed(2)} cores`;
+    if (nanos >= 1000000) return `${Math.round(nanos / 1000000)}m`;
+    if (nanos >= 1000) return `${Math.round(nanos / 1000)}μ`;
+    return `${nanos}n`;
+  }
+
+  // Helper: Format bytes to human-readable
+  private formatMemory(bytes: number): string {
+    if (bytes >= 1024 ** 3) return `${(bytes / (1024 ** 3)).toFixed(2)} Gi`;
+    if (bytes >= 1024 ** 2) return `${(bytes / (1024 ** 2)).toFixed(0)} Mi`;
+    if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} Ki`;
+    return `${bytes} B`;
+  }
+
   async applyYaml(namespace: string, kind: string, name: string, yamlContent: string): Promise<void> {
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
@@ -618,13 +826,7 @@ export class KubeClient {
     data.pods.items.forEach((pod: any) => {
         // 1. Link via Volumes
         pod.spec.volumes?.forEach((vol: any) => {
-            if (vol.persistentVolumeClaim) {
-                const claimName = vol.persistentVolumeClaim.claimName;
-                const pvc = data.pvcs.items.find((p: any) => p.metadata.name === claimName && p.metadata.namespace === pod.metadata.namespace);
-                if (pvc) {
-                    links.push({ source: pod.metadata.uid, target: pvc.metadata.uid, type: 'storage' });
-                }
-            }
+            // Standard ConfigMap
             if (vol.configMap) {
                  const cmName = vol.configMap.name;
                  const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
@@ -632,6 +834,7 @@ export class KubeClient {
                     links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
                  }
             }
+            // Standard Secret
             if (vol.secret) {
                  const secName = vol.secret.secretName;
                  const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
@@ -639,35 +842,70 @@ export class KubeClient {
                     links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
                  }
             }
+            // PVC
+            if (vol.persistentVolumeClaim) {
+                const claimName = vol.persistentVolumeClaim.claimName;
+                const pvc = data.pvcs.items.find((p: any) => p.metadata.name === claimName && p.metadata.namespace === pod.metadata.namespace);
+                if (pvc) {
+                    links.push({ source: pod.metadata.uid, target: pvc.metadata.uid, type: 'storage' });
+                }
+            }
+            // Projected Volumes (Sources: ConfigMap, Secret, DownwardAPI, ServiceAccountToken)
+            if (vol.projected && vol.projected.sources) {
+                vol.projected.sources.forEach((source: any) => {
+                    if (source.configMap) {
+                        const cmName = source.configMap.name;
+                        const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
+                        if (cm) {
+                            links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
+                        }
+                    }
+                    if (source.secret) {
+                        const secName = source.secret.name;
+                        const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
+                        if (sec) {
+                            links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
+                        }
+                    }
+                });
+            }
         });
 
         // 2. Link via Environment Variables (env & envFrom)
         pod.spec.containers?.forEach((container: any) => {
-            // envFrom
+            // envFrom (ConfigMapRef / SecretRef)
             container.envFrom?.forEach((envFrom: any) => {
                 if (envFrom.configMapRef) {
                     const cmName = envFrom.configMapRef.name;
                     const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                    if (cm) links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
+                    if (cm) {
+                        links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
+                    }
                 }
                 if (envFrom.secretRef) {
                     const secName = envFrom.secretRef.name;
                     const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                    if (sec) links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
+                    if (sec) {
+                        links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
+                    }
                 }
             });
 
-            // env
+            // env (valueFrom)
             container.env?.forEach((env: any) => {
                 if (env.valueFrom?.configMapKeyRef) {
                     const cmName = env.valueFrom.configMapKeyRef.name;
                     const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                    if (cm) links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
+                    if (cm) {
+                        links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
+                    }
                 }
                 if (env.valueFrom?.secretKeyRef) {
                     const secName = env.valueFrom.secretKeyRef.name;
                     const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                    if (sec) links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
+                    if (sec) {
+                        links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
+                    }
                 }
             });
         });

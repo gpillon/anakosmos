@@ -348,7 +348,7 @@ const LayoutSystem: React.FC<{
 };
 
 export const ClusterScene: React.FC = () => {
-  const { resources, links } = useClusterStore();
+  const { resources, links, setSceneReady } = useClusterStore();
   const selectedResourceId = useSettingsStore(state => state.selectedResourceId);
   const setSelectedResourceId = useSettingsStore(state => state.setSelectedResourceId);
   const focusedResourceKind = useSettingsStore(state => state.focusedResourceKind);
@@ -363,10 +363,38 @@ export const ClusterScene: React.FC = () => {
   
   const openDetails = useResourceDetailsStore(state => state.openDetails);
   
+  // Filter visible resources
+  const visibleResources = useMemo(() => {
+      const filtered: Record<string, ClusterResource> = {};
+      Object.values(resources).forEach(r => {
+          if (shouldShowResource(r, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters)) {
+              filtered[r.id] = r;
+          }
+      });
+      return filtered;
+  }, [resources, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters]);
+
+  // Group resources by kind for instancing
+  const resourcesByKind = useMemo(() => {
+      const groups: Record<string, ClusterResource[]> = {};
+      Object.values(visibleResources).forEach(r => {
+          if (!groups[r.kind]) groups[r.kind] = [];
+          groups[r.kind].push(r);
+      });
+      return groups;
+  }, [visibleResources]);
+
   const [hoveredId, setHoveredId] = useState<string | null>(null);
 
   // Use the ref-based hook
   const { positionsRef: targetPositionsRef, hasPositions } = useForceLayout(resources, links);
+
+  // Notify store when scene is ready (physics calculated)
+  useEffect(() => {
+    if (hasPositions || Object.keys(resources).length === 0) {
+      setSceneReady(true);
+    }
+  }, [hasPositions, resources, setSceneReady]);
 
   const connectedIds = useMemo(() => {
     if (!selectedResourceId) return new Set<string>();
@@ -386,18 +414,6 @@ export const ClusterScene: React.FC = () => {
   const handleDoubleClick = (id: string) => {
       if (resources[id]) openDetails(id);
   };
-  
-  // Group resources by kind for instancing
-  const resourcesByKind = useMemo(() => {
-      const groups: Record<string, ClusterResource[]> = {};
-      Object.values(resources).forEach(r => {
-          if (!shouldShowResource(r, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters)) return;
-
-          if (!groups[r.kind]) groups[r.kind] = [];
-          groups[r.kind].push(r);
-      });
-      return groups;
-  }, [resources, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters]);
 
   // Geometry map from type to actual THREE geometry - ALL UNIQUE
   const geometryMap: Record<GeometryType, THREE.BufferGeometry> = {
@@ -431,6 +447,32 @@ export const ClusterScene: React.FC = () => {
 
   return (
     <div className="absolute inset-0 z-0 bg-slate-900">
+      {/* Physics Initialization Overlay */}
+      {!hasPositions && Object.keys(resources).length > 0 && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm text-white transition-opacity duration-500">
+          <div className="flex flex-col items-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+            <div className="relative w-20 h-20">
+               <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+               <div className="absolute inset-0 border-4 border-t-blue-500 rounded-full animate-spin"></div>
+               <div className="absolute inset-0 flex items-center justify-center">
+                 <div className="w-2 h-2 bg-blue-400 rounded-full animate-ping"></div>
+               </div>
+            </div>
+            <div className="text-center space-y-2">
+              <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                Stabilizing Cluster
+              </h2>
+              <div className="flex flex-col gap-1 text-sm text-slate-400">
+                <p>Initializing physics engine...</p>
+                <p className="font-mono text-xs text-slate-500">
+                  Calculated {Object.keys(resources).length} nodes
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Canvas camera={{ position: [15, 15, 15], fov: 50, far: 5000 }} onPointerMissed={handleMiss}>
         <color attach="background" args={['#050505']} />
         
@@ -445,7 +487,7 @@ export const ClusterScene: React.FC = () => {
           fadeDistance={500} 
           sectionColor="#4f4f4f" 
           cellColor="#2f2f2f"
-          position={[0, -5, 0]} 
+          position={[0, -3, 0]} 
         />
         
         {/* CameraManager needs direct access to interpolated positions or target? 
@@ -460,7 +502,7 @@ export const ClusterScene: React.FC = () => {
             {(interpolatedRef) => (
                 <group>
                      {enableNamespaceProjection && (
-                        <NamespaceProjections resources={resources} positionsRef={interpolatedRef} />
+                        <NamespaceProjections resources={visibleResources} positionsRef={interpolatedRef} />
                     )}
 
                     {Object.entries(resourcesByKind).map(([kind, kindResources]) => (
@@ -483,9 +525,9 @@ export const ClusterScene: React.FC = () => {
                     
                     <LinkLayer positionsRef={interpolatedRef} />
                     <LabelsLayer 
-                        resources={resources} 
+                        resources={visibleResources} 
                         positionsRef={interpolatedRef} 
-                        selectedId={selectedResourceId} 
+                        selectedId={selectedResourceId}  
                         hoveredId={hoveredId}
                         focusedKind={focusedResourceKind}
                         statusFilters={statusFilters}

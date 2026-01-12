@@ -3,7 +3,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useClusterStore } from '../store/useClusterStore';
 import { useTerminalStore } from '../store/useTerminalStore';
 import { 
-  X, Activity, Cpu, HardDrive, 
+  X, Activity,
   FileText, Terminal, Clock,
   ChevronRight, Save, Download, Check, AlertCircle
 } from 'lucide-react';
@@ -11,6 +11,7 @@ import { clsx } from 'clsx';
 import Editor from '@monaco-editor/react';
 import yaml from 'js-yaml';
 import { ErrorModal } from './components/ErrorModal';
+import { PodMetricsDisplay, NodeMetricsDisplay } from './components/MetricsChart';
 
 type Tab = 'overview' | 'metadata' | 'events' | 'yaml';
 
@@ -211,11 +212,26 @@ export const Sidebar: React.FC = () => {
         
         {activeTab === 'overview' && (
           <div className="space-y-8">
-            {/* Metrics */}
-            {(resource.cpu || resource.memory) && (
-              <div className="grid grid-cols-2 gap-3">
-                <MetricCard icon={Cpu} label="CPU Usage" value={resource.cpu} />
-                <MetricCard icon={HardDrive} label="Memory" value={resource.memory} />
+            {/* Metrics Charts for Pods */}
+            {resource.kind === 'Pod' && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Metrics</h3>
+                <PodMetricsDisplay
+                  namespace={resource.namespace || 'default'}
+                  podName={resource.name}
+                  client={client}
+                />
+              </div>
+            )}
+
+            {/* Metrics Charts for Nodes */}
+            {resource.kind === 'Node' && (
+              <div className="space-y-3">
+                <h3 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Metrics</h3>
+                <NodeMetricsDisplay
+                  nodeName={resource.name}
+                  client={client}
+                />
               </div>
             )}
 
@@ -398,15 +414,6 @@ const TabButton = ({ id, label, active, onClick }: { id: Tab, label: string, act
   >
     {label}
   </button>
-);
-
-const MetricCard = ({ icon: Icon, label, value }: { icon: any, label: string, value?: string }) => (
-  <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50 flex flex-col gap-2">
-    <div className="flex items-center gap-2 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-      <Icon size={14} /> {label}
-    </div>
-    <div className="text-2xl font-mono text-white">{value || '-'}</div>
-  </div>
 );
 
 const ActionButton = ({ icon: Icon, label, onClick }: { icon: any, label: string, onClick?: () => void }) => (

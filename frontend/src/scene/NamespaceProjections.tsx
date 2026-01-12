@@ -47,6 +47,50 @@ interface ZoneProps {
   color: string;
 }
 
+const MIN_HULL_POINTS = 5;
+const BASE_OFFSET = 2;
+/**
+ * Ensures we have at least MIN_HULL_POINTS for a visually pleasing zone
+ * Adds synthetic points in a circle around the centroid if needed
+ */
+function ensureMinimumPoints(points: THREE.Vector3[], minPoints: number): THREE.Vector3[] {
+  if (points.length >= minPoints) return points;
+  
+  // Calculate centroid and max distance from it
+  const center = new THREE.Vector3();
+  points.forEach(p => center.add(p));
+  center.divideScalar(points.length || 1);
+  
+  // Find the maximum distance from center (minimum radius for synthetic points)
+  let maxDist = 2; // Minimum radius
+  points.forEach(p => {
+    const dist = Math.sqrt(
+      Math.pow(p.x - center.x, 2) + Math.pow(p.z - center.z, 2)
+    );
+    maxDist = Math.max(maxDist, dist);
+  });
+  
+  // Add a bit of padding
+  const radius = maxDist + 1.5;
+  
+  // Create synthetic points evenly distributed around the center
+  const result = [...points];
+  const syntheticCount = minPoints - points.length;
+  
+  for (let i = 0; i < syntheticCount; i++) {
+    // Distribute evenly around the circle, offset by existing points
+    const angle = (2 * Math.PI * i) / syntheticCount + Math.PI / 6;
+    const syntheticPoint = new THREE.Vector3(
+      center.x + Math.cos(angle) * radius,
+      center.y,
+      center.z + Math.sin(angle) * radius
+    );
+    result.push(syntheticPoint);
+  }
+  
+  return result;
+}
+
 const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => {
   // Compute dynamic geometry
   const { geometry, centroid } = useMemo(() => {
@@ -57,19 +101,11 @@ const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => 
     positions.forEach(p => center.add(p));
     center.divideScalar(positions.length);
 
-    // 2. If single point, just a circle
-    if (positions.length === 1) {
-       const circle = new THREE.CircleGeometry(2, 32);
-       // Circle is on XY plane. We want it on XZ. 
-       // If we rotate parent mesh by PI/2, XY becomes XZ.
-       // So we don't need to rotate geometry here if we use same parent rotation logic.
-       // But we need to translate it to correct 2D coords.
-       circle.translate(positions[0].x, positions[0].z, 0);
-       return { geometry: circle, centroid: positions[0] };
-    }
+    // 2. Ensure minimum points for a nice shape
+    const expandedPositions = ensureMinimumPoints(positions, MIN_HULL_POINTS);
 
     // 3. Convex Hull for boundary
-    const hullPoints = getConvexHull(positions);
+    const hullPoints = getConvexHull(expandedPositions);
     
     // Create shape from hull points
     const shape = new THREE.Shape();
@@ -83,20 +119,18 @@ const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => 
     }
     
     const shapeGeo = new THREE.ShapeGeometry(shape);
-    // No rotation needed on geometry itself if we rotate the mesh correctly.
-    // Shape lies on XY plane by default.
-    // We want it on XZ plane.
-    // So we rotate -PI/2 on X axis.
     
     return { geometry: shapeGeo, centroid: center };
   }, [positions]);
 
   if (!geometry) return null;
 
+
+
   return (
     <group>
         {/* Fill */}
-        <mesh position={[0, -4.95, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <mesh position={[0, -(BASE_OFFSET + .95), 0]} rotation={[Math.PI / 2, 0, 0]}>
             {/* 
                ShapeGeometry is on XY plane.
                Data is (x, z) mapped to (x, y).
@@ -113,14 +147,14 @@ const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => 
         </mesh>
 
         {/* Outline */}
-        <lineSegments position={[0, -4.94, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <lineSegments position={[0, -(BASE_OFFSET + .94), 0]} rotation={[Math.PI / 2, 0, 0]}>
              <primitive object={new THREE.WireframeGeometry(geometry)} attach="geometry" />
              <lineBasicMaterial color={color} transparent opacity={0.6} />
         </lineSegments>
         
         {/* Label */}
         <Text
-            position={[centroid.x, -4.0, centroid.z]}
+            position={[centroid.x, -(BASE_OFFSET + 0.0), centroid.z]}
             rotation={[-Math.PI / 2, 0, 0]} 
             fontSize={1.5}
             color="white"

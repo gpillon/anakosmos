@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
+import { useClusterStore } from '../store/useClusterStore';
 import { X, MousePointer } from 'lucide-react';
 
 export const Onboarding: React.FC = () => {
   const [visible, setVisible] = useState(true);
+  const isSceneReady = useClusterStore(state => state.isSceneReady);
 
-  if (!visible) return null;
+  if (!visible || !isSceneReady) return null;
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">

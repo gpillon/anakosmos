@@ -31,14 +31,14 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
     const validLinks: ClusterLink[] = [];
     const colorArray: number[] = [];
 
-    // Helper to get color
+    // Helper to get color - brighter colors for better visibility
     const getColor = (type: string, dimmed: boolean) => {
-        if (dimmed) return [0.2, 0.2, 0.2]; // Very dim gray
+        if (dimmed) return [0.15, 0.15, 0.15]; // Very dim gray
         switch (type) {
             case 'owner': return [0.58, 0.64, 0.72]; // Slate 400
             case 'network': return [0.23, 0.51, 0.96]; // Blue 500
-            case 'config': return [0.66, 0.33, 0.96]; // Purple 500
-            case 'storage': return [0.85, 0.47, 0.02]; // Orange
+            case 'config': return [0.85, 0.45, 1.0]; // Bright Magenta/Purple
+            case 'storage': return [1.0, 0.6, 0.1]; // Bright Orange
             default: return [0.5, 0.5, 0.5];
         }
     };
@@ -142,7 +142,7 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
             args={[colors, 3]} 
         />
       </bufferGeometry>
-      <lineBasicMaterial vertexColors transparent opacity={0.4} linewidth={1} />
+      <lineBasicMaterial vertexColors transparent opacity={0.6} linewidth={1} />
     </lineSegments>
   );
 };

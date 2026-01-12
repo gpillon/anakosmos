@@ -1,10 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import type { ClusterResource, ClusterLink } from '../api/types';
 import { useSettingsStore } from '../store/useSettingsStore';
 
 // Web Worker Import
 // Vite handles this import with ?worker suffix
 import LayoutWorker from '../workers/layout.worker?worker';
+
+// Simple hash for comparing data changes
+const simpleHash = (str: string): string => {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash.toString(36);
+};
 
 export const useForceLayout = (
   resources: Record<string, ClusterResource>,
@@ -15,6 +26,7 @@ export const useForceLayout = (
   const [hasPositions, setHasPositions] = useState(false);
   
   const workerRef = useRef<Worker | null>(null);
+  const lastSentHashRef = useRef<string>('');
   
   const searchQuery = useSettingsStore(state => state.searchQuery);
   const filterNamespaces = useSettingsStore(state => state.filterNamespaces);
@@ -48,52 +60,86 @@ export const useForceLayout = (
     };
   }, []);
 
-  useEffect(() => {
-    if (!workerRef.current) return;
-
+  // Memoize the computed layout data to detect actual changes
+  const layoutData = useMemo(() => {
     // 1. Filter Resources
-    const filteredResources = Object.values(resources).filter(r => 
+    const allResources = Object.values(resources);
+    const filteredResources = allResources.filter(r => 
         shouldShowResource(r, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters)
     );
 
-    // 2. Identify Namespaces
+    // 2. Identify Namespaces (Stable based on ALL resources)
     const namespaces = Array.from(new Set(
-        filteredResources.map(r => r.namespace).filter(n => !!n)
+        allResources.map(r => r.namespace).filter(n => !!n)
     )).sort();
 
-    // 3. Prepare Nodes
+    const namespaceSizes: Record<string, number> = {};
+    let clusterScopedCount = 0;
+    allResources.forEach(r => {
+        if (r.namespace) {
+            namespaceSizes[r.namespace] = (namespaceSizes[r.namespace] || 0) + 1;
+        } else {
+            clusterScopedCount++;
+        }
+    });
+
+    // 3. Prepare Nodes (without positions - those come from ref)
+    const nodeIds = filteredResources.map(r => r.id).sort();
     const nodes = filteredResources.map(r => ({
         id: r.id,
         kind: r.kind,
         namespace: r.namespace,
-        // Pass current position from ref to maintain state across updates
-        x: positionsRef.current[r.id]?.[0],
-        y: positionsRef.current[r.id]?.[2] // Map Z to Y
     }));
 
-
     // 4. Prepare Links
-    const nodeIds = new Set(nodes.map(n => n.id));
+    const nodeIdSet = new Set(nodeIds);
     const simLinks = links
-      .filter(l => nodeIds.has(l.source) && nodeIds.has(l.target))
+      .filter(l => nodeIdSet.has(l.source) && nodeIdSet.has(l.target))
       .map(l => ({
         source: l.source,
         target: l.target,
         type: l.type
       }));
+    
+    // Generate hash for change detection
+    const linkIds = simLinks.map(l => `${l.source}-${l.target}`).sort();
+    const dataHash = simpleHash(`${nodeIds.join(',')}|${linkIds.join(',')}|${enableNamespaceProjection}`);
 
-    // 5. Send to Worker
+    return { nodes, simLinks, namespaces, namespaceSizes, clusterScopedCount, dataHash };
+  }, [resources, links, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, enableNamespaceProjection, statusFilters]);
+
+  useEffect(() => {
+    if (!workerRef.current) return;
+    
+    const { nodes, simLinks, namespaces, namespaceSizes, clusterScopedCount, dataHash } = layoutData;
+
+    // Skip if data hasn't actually changed
+    if (dataHash === lastSentHashRef.current) {
+      return;
+    }
+    lastSentHashRef.current = dataHash;
+
+    // Add current positions from ref to nodes before sending
+    const nodesWithPositions = nodes.map(n => ({
+        ...n,
+        x: positionsRef.current[n.id]?.[0],
+        y: positionsRef.current[n.id]?.[2]
+    }));
+
+    // Send to Worker
     workerRef.current.postMessage({
         type: 'update',
-        nodes,
+        nodes: nodesWithPositions,
         links: simLinks,
         config: {
             enableNamespaceProjection,
-            namespaces
+            namespaces,
+            namespaceSizes,
+            clusterScopedCount
         }
     });
 
-  }, [resources, links, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, enableNamespaceProjection, statusFilters]);
+  }, [layoutData, enableNamespaceProjection]);
 
   return { positionsRef, hasPositions };
 };

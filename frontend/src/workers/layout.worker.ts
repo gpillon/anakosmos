@@ -14,6 +14,19 @@ const nodeStateMap = new Map<string, {x: number, y: number, vx: number, vy: numb
 // Cache for namespace positions and sizes
 let namespacePositionCache: Map<string, { x: number; y: number; radius: number }> = new Map();
 
+// Cache for data fingerprint to avoid unnecessary simulation restarts
+let lastDataFingerprint = '';
+
+/**
+ * Generate a simple fingerprint of the current data to detect real changes
+ */
+const generateFingerprint = (nodeIds: string[], linkPairs: string[], config: any): string => {
+  // Sort for consistent comparison
+  const sortedNodes = [...nodeIds].sort().join(',');
+  const sortedLinks = [...linkPairs].sort().join(',');
+  return `${sortedNodes}|${sortedLinks}|${config.enableNamespaceProjection}`;
+};
+
 // Golden angle in radians (~137.5°) - creates optimal packing like sunflower seeds
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -116,20 +129,59 @@ ctx.onmessage = (e: MessageEvent<SimulationMessage>) => {
 
   if (type === 'init' || type === 'update') {
     const { nodes, links, config } = e.data as any;
-    const { enableNamespaceProjection, namespaces } = config;
+    const { enableNamespaceProjection, namespaces, namespaceSizes: rawSizes, clusterScopedCount: rawClusterCount } = config;
 
-    // Calculate namespace sizes and cluster-scoped count for smart layout
-    const namespaceSizes = new Map<string, number>();
-    let clusterScopedCount = 0;
+    // Generate fingerprint to check if data actually changed
+    const nodeIds = nodes.map((n: any) => n.id);
+    const linkPairs = links.map((l: any) => `${l.source}-${l.target}`);
+    const fingerprint = generateFingerprint(nodeIds, linkPairs, config);
     
-    nodes.forEach((node: any) => {
-      if (node.namespace) {
-        namespaceSizes.set(node.namespace, (namespaceSizes.get(node.namespace) || 0) + 1);
-      } else {
-        // Count resources without namespace (cluster-scoped)
-        clusterScopedCount++;
-      }
-    });
+    // If data hasn't changed, skip simulation restart entirely
+    const dataChanged = fingerprint !== lastDataFingerprint;
+    lastDataFingerprint = fingerprint;
+    
+    // If simulation exists and data hasn't changed, just send current positions
+    if (!dataChanged && simulation && type === 'update') {
+      const positions: Record<string, [number, number, number]> = {};
+      nodeStateMap.forEach((state, id) => {
+        const node = nodes.find((n: any) => n.id === id);
+        if (node) {
+          let height = 0;
+          if (node.kind === 'Node') height = 0;
+          else if (node.kind === 'NodeNetworkConfigurationPolicy') height = 0.3;
+          else if (node.kind === 'PersistentVolume') height = 0.5;
+          else if (node.kind === 'StorageClass') height = 0.2;
+          else if (node.kind === 'NetworkAttachmentDefinition') height = 1;
+          else if (node.kind === 'PersistentVolumeClaim') height = 1.2;
+          else if (node.kind === 'Pod') height = 1.5;
+          else if (node.kind === 'Secret' || node.kind === 'ConfigMap') height = 2;
+          else if (node.kind === 'Service') height = 2.5;
+          else if (node.kind === 'Ingress' || node.kind === 'Route') height = 3.5;
+          else if (node.kind === 'Deployment') height += 3.5;
+          positions[id] = [state.x, height, state.y];
+        }
+      });
+      ctx.postMessage({ type: 'tick', positions });
+      return; // Skip simulation restart
+    }
+
+    // Use provided stable sizes if available (fallback to calculating from nodes for backward compat/init)
+    const namespaceSizes = new Map<string, number>(Object.entries(rawSizes || {}));
+    
+    // If rawSizes wasn't provided (e.g. init?), calculate from visible nodes (fallback)
+    // But ideally we rely on what's passed in config for stability
+    let clusterScopedCount = rawClusterCount;
+
+    if (!rawSizes) {
+         clusterScopedCount = 0;
+         nodes.forEach((node: any) => {
+          if (node.namespace) {
+            namespaceSizes.set(node.namespace, (namespaceSizes.get(node.namespace) || 0) + 1);
+          } else {
+            clusterScopedCount++;
+          }
+        });
+    }
     
     // Pre-calculate namespace positions using smart packing algorithm
     if (enableNamespaceProjection) {
@@ -219,7 +271,7 @@ ctx.onmessage = (e: MessageEvent<SimulationMessage>) => {
     // B. Temperature Control
     // If updating, restart with low alpha (heat) to avoid explosion
     // If init, full heat.
-    const startAlpha = type === 'update' ? 0.1 : 1.0;
+    const startAlpha = type === 'update' ? 0.05 : 1.0;
     simulation.alpha(startAlpha).restart();
     
     // Throttling State

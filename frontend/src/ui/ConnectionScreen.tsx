@@ -5,7 +5,7 @@ import type { SavedConnection } from '../store/useSettingsStore';
 import { Server, Database, AlertCircle, ArrowRight, Key, CheckCircle2, History, Trash2, ShieldAlert } from 'lucide-react';
 
 export const ConnectionScreen: React.FC = () => {
-  const { connect, checkConnection, connectionError } = useClusterStore();
+  const { connect, checkConnection, connectionError, loadingProgress, loadingMessage } = useClusterStore();
   const { savedConnections, addSavedConnection, removeSavedConnection } = useSettingsStore();
   
   const [customUrl, setCustomUrl] = useState('http://localhost:8080');
@@ -280,9 +280,18 @@ export const ConnectionScreen: React.FC = () => {
           </div>
         )}
 
-        {isLoading && step === 'select' && activeMode !== 'custom' && (
-          <div className="mt-6 flex justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+        {isLoading && (
+          <div className="mt-6 pt-6 border-t border-slate-700/50 animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex justify-between text-xs text-slate-400 mb-2">
+              <span className="font-medium text-slate-300">{loadingMessage || 'Loading...'}</span>
+              <span className="font-mono">{loadingProgress}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300 ease-out rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                style={{ width: `${Math.max(5, loadingProgress)}%` }}
+              />
+            </div>
           </div>
         )}
       </div>
