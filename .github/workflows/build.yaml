@@ -56,7 +56,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: frontend-dist
-          path: dist
+          path: static-frontend
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
