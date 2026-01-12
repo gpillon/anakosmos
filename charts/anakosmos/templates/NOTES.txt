@@ -1,0 +1,31 @@
+🚀 Anakosmos has been deployed!
+
+{{- if .Values.ingress.enabled }}
+🌐 Access the dashboard at:
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+🌐 Access the dashboard at:
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "anakosmos.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+🌐 Access the dashboard at:
+  NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+        You can watch the status by running:
+        kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "anakosmos.fullname" . }}
+
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "anakosmos.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+🌐 Access the dashboard by port-forwarding:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "anakosmos.fullname" . }} 8080:{{ .Values.service.port }}
+  echo "Visit http://localhost:8080"
+{{- end }}
+
+📖 Documentation: https://github.com/gpillon/anakosmos
+
+Enjoy visualizing your Kubernetes cluster in 3D! 🎮

@@ -4,8 +4,15 @@ import { X, Maximize2, Minimize2, Layers, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
 import { DeploymentView, deploymentTabs } from './resources/deployment/DeploymentView';
 import { ServiceView, serviceTabs } from './resources/service/ServiceView';
+import { PodView, podTabs } from './resources/pod/PodView';
+import { IngressView, ingressTabs } from './resources/ingress/IngressView';
+import { ConfigMapView, configMapTabs } from './resources/configmap/ConfigMapView';
+import { SecretView, secretTabs } from './resources/secret/SecretView';
+import { JobView, jobTabs } from './resources/job/JobView';
+import { CronJobView, cronJobTabs } from './resources/cronjob/CronJobView';
+import { HPAView, hpaTabs } from './resources/hpa/HPAView';
+import { GenericView, genericTabs } from './resources/generic/GenericView';
 import type { ClusterResource } from '../api/types';
-import Editor from '@monaco-editor/react';
 import { useClusterStore } from '../store/useClusterStore';
 
 export const ResourceDetailsWindow: React.FC = () => {
@@ -68,15 +75,25 @@ export const ResourceDetailsWindow: React.FC = () => {
   if (!isOpen || !resource) return null;
 
   // Determine which component and tabs to use
-  let ViewComponent: React.FC<{ resource: ClusterResource; activeTab: string }> = DefaultView;
-  let tabs = defaultTabs;
+  let ViewComponent: React.FC<{ resource: ClusterResource; activeTab: string }> = GenericView;
+  let tabs = genericTabs;
 
-  if (resource.kind === 'Deployment') {
-    ViewComponent = DeploymentView;
-    tabs = deploymentTabs;
-  } else if (resource.kind === 'Service') {
-    ViewComponent = ServiceView;
-    tabs = serviceTabs;
+  // Map resource kinds to their specific views
+  const viewMap: Record<string, { view: React.FC<{ resource: ClusterResource; activeTab: string }>; tabs: Array<{ id: string; label: string }> }> = {
+    'Deployment': { view: DeploymentView, tabs: deploymentTabs },
+    'Service': { view: ServiceView, tabs: serviceTabs },
+    'Pod': { view: PodView, tabs: podTabs },
+    'Ingress': { view: IngressView, tabs: ingressTabs },
+    'ConfigMap': { view: ConfigMapView, tabs: configMapTabs },
+    'Secret': { view: SecretView, tabs: secretTabs },
+    'Job': { view: JobView, tabs: jobTabs },
+    'CronJob': { view: CronJobView, tabs: cronJobTabs },
+    'HorizontalPodAutoscaler': { view: HPAView, tabs: hpaTabs },
+  };
+
+  if (viewMap[resource.kind]) {
+    ViewComponent = viewMap[resource.kind].view;
+    tabs = viewMap[resource.kind].tabs;
   }
 
   return (
@@ -142,61 +159,4 @@ export const ResourceDetailsWindow: React.FC = () => {
       </div>
     </div>
   );
-};
-
-// Default generic view for other resources
-const defaultTabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'yaml', label: 'YAML' },
-];
-
-const DefaultView: React.FC<{ resource: ClusterResource; activeTab: string }> = ({ resource, activeTab }) => {
-    const { client } = useClusterStore();
-    const [yamlContent, setYamlContent] = React.useState('');
-    const [loading, setLoading] = React.useState(false);
-
-    React.useEffect(() => {
-        if (activeTab === 'yaml' && client) {
-            setLoading(true);
-            client.getYaml(resource.namespace, resource.kind, resource.name)
-                .then(setYamlContent)
-                .catch(console.error)
-                .finally(() => setLoading(false));
-        }
-    }, [activeTab, resource, client]);
-
-    if (activeTab === 'yaml') {
-        return (
-            <div className="h-full w-full bg-[#1e1e1e]">
-                {loading && <div className="text-slate-400 p-4">Loading YAML...</div>}
-                {!loading && (
-                    <Editor
-                        height="100%"
-                        defaultLanguage="yaml"
-                        theme="vs-dark"
-                        value={yamlContent}
-                        options={{
-                            minimap: { enabled: false },
-                            fontSize: 12,
-                            readOnly: true
-                        }}
-                    />
-                )}
-            </div>
-        );
-    }
-
-    return (
-        <div className="p-6 text-slate-300">
-            <h2 className="text-xl font-bold mb-4">{resource.name}</h2>
-            <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-900/50 p-4 rounded border border-slate-700">
-                    <h3 className="font-bold text-slate-400 mb-2">Details</h3>
-                    <pre className="text-xs overflow-auto">
-                        {JSON.stringify(resource, null, 2)}
-                    </pre>
-                </div>
-            </div>
-        </div>
-    );
 };

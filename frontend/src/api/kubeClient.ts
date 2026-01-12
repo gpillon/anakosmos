@@ -102,7 +102,10 @@ export class KubeClient {
         { key: 'pvcs', group: 'v1', resourceName: 'persistentvolumeclaims' },
         { key: 'configmaps', group: 'v1' },
         { key: 'secrets', group: 'v1' },
-        { key: 'storageclasses', group: 'storage.k8s.io/v1' }
+        { key: 'storageclasses', group: 'storage.k8s.io/v1' },
+        { key: 'jobs', group: 'batch/v1' },
+        { key: 'cronjobs', group: 'batch/v1' },
+        { key: 'hpas', group: 'autoscaling/v2', resourceName: 'horizontalpodautoscalers' }
       ];
 
       const total = resourcesToFetch.length;
@@ -130,7 +133,10 @@ export class KubeClient {
           pvcs,
           configmaps,
           secrets,
-          storageclasses
+          storageclasses,
+          jobs,
+          cronjobs,
+          hpas
       ] = results;
 
       if (onProgress) onProgress(100, 'Processing data...');
@@ -147,7 +153,10 @@ export class KubeClient {
           pvcs,
           configmaps,
           secrets,
-          storageclasses
+          storageclasses,
+          jobs,
+          cronjobs,
+          hpas
       });
     } catch (e) {
       console.error('Failed to fetch from API', e);
@@ -262,6 +271,13 @@ export class KubeClient {
     }
   }
 
+  /**
+   * Generic list resources method
+   */
+  async listResources(group: string, resource: string): Promise<any> {
+    return this.fetchK8sList(resource, group);
+  }
+
   async getYaml(namespace: string, kind: string, name: string): Promise<string> {
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
@@ -282,6 +298,10 @@ export class KubeClient {
             endpoint = namespace ? `apis/networking.k8s.io/v1/namespaces/${namespace}/${k}es` : `apis/networking.k8s.io/v1/${k}es`;
         } else if (['storageclass'].includes(k)) {
             endpoint = `apis/storage.k8s.io/v1/${k}es`;
+        } else if (['job', 'cronjob'].includes(k)) {
+            endpoint = namespace ? `apis/batch/v1/namespaces/${namespace}/${k}s` : `apis/batch/v1/${k}s`;
+        } else if (k === 'horizontalpodautoscaler') {
+            endpoint = namespace ? `apis/autoscaling/v2/namespaces/${namespace}/horizontalpodautoscalers` : `apis/autoscaling/v2/horizontalpodautoscalers`;
         } else {
             // Fallback (might fail)
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
@@ -630,6 +650,10 @@ export class KubeClient {
             endpoint = namespace ? `apis/networking.k8s.io/v1/namespaces/${namespace}/${k}es` : `apis/networking.k8s.io/v1/${k}es`;
         } else if (['storageclass'].includes(k)) {
             endpoint = `apis/storage.k8s.io/v1/${k}es`;
+        } else if (['job', 'cronjob'].includes(k)) {
+            endpoint = namespace ? `apis/batch/v1/namespaces/${namespace}/${k}s` : `apis/batch/v1/${k}s`;
+        } else if (k === 'horizontalpodautoscaler') {
+            endpoint = namespace ? `apis/autoscaling/v2/namespaces/${namespace}/horizontalpodautoscalers` : `apis/autoscaling/v2/horizontalpodautoscalers`;
         } else {
             // Fallback
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
@@ -666,6 +690,66 @@ export class KubeClient {
     }
   }
 
+  async deleteResource(namespace: string, kind: string, name: string): Promise<void> {
+    try {
+        const cleanBase = this.baseUrl.replace(/\/+$/, '');
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json'
+        };
+
+        // Determine API Group from kind
+        let endpoint = '';
+        const k = kind.toLowerCase();
+        
+        if (['pod', 'node', 'service', 'serviceaccount', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
+            endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
+        } else if (['deployment', 'statefulset', 'daemonset', 'replicaset'].includes(k)) {
+            endpoint = namespace ? `apis/apps/v1/namespaces/${namespace}/${k}s` : `apis/apps/v1/${k}s`;
+        } else if (['ingress'].includes(k)) {
+            endpoint = namespace ? `apis/networking.k8s.io/v1/namespaces/${namespace}/${k}es` : `apis/networking.k8s.io/v1/${k}es`;
+        } else if (['storageclass'].includes(k)) {
+            endpoint = `apis/storage.k8s.io/v1/${k}es`;
+        } else if (['priorityclass'].includes(k)) {
+            endpoint = `apis/scheduling.k8s.io/v1/${k}es`;
+        } else if (['job', 'cronjob'].includes(k)) {
+            endpoint = namespace ? `apis/batch/v1/namespaces/${namespace}/${k}s` : `apis/batch/v1/${k}s`;
+        } else if (k === 'horizontalpodautoscaler') {
+            endpoint = namespace ? `apis/autoscaling/v2/namespaces/${namespace}/horizontalpodautoscalers` : `apis/autoscaling/v2/horizontalpodautoscalers`;
+        } else {
+            // Fallback
+            endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
+        }
+        
+        // Append name
+        endpoint += `/${name}`;
+
+        let url: string;
+        if (this.mode === 'custom') {
+            url = `/proxy/${endpoint}`;
+            headers['X-Kube-Target'] = cleanBase;
+        } else {
+            url = `${cleanBase}/${endpoint}`;
+        }
+
+        if (this.token && this.token.trim().length > 0) {
+            headers['Authorization'] = `Bearer ${this.token.trim()}`;
+        }
+
+        const res = await fetch(url, {
+            method: 'DELETE',
+            headers
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new ApiError(`Delete failed: ${res.status} ${res.statusText}`, res.status, errText);
+        }
+    } catch (e) {
+        console.error('Delete resource failed', e);
+        throw e;
+    }
+  }
+
   private transformK8sData(data: {
       nodes: any, 
       pods: any, 
@@ -678,7 +762,10 @@ export class KubeClient {
       pvcs: any,
       configmaps: any,
       secrets: any,
-      storageclasses: any
+      storageclasses: any,
+      jobs: any,
+      cronjobs: any,
+      hpas: any
   }) {
     const resources: Record<string, ClusterResource> = {};
     const links: ClusterLink[] = [];
@@ -821,6 +908,70 @@ export class KubeClient {
     data.storageclasses.items.forEach((item: any) => addRes(item, 'StorageClass'));
     data.configmaps.items.forEach((item: any) => addRes(item, 'ConfigMap'));
     data.secrets.items.forEach((item: any) => addRes(item, 'Secret'));
+    
+    // Jobs
+    data.jobs.items.forEach((item: any) => {
+        const conditions = item.status?.conditions || [];
+        const completeCond = conditions.find((c: any) => c.type === 'Complete' && c.status === 'True');
+        const failedCond = conditions.find((c: any) => c.type === 'Failed' && c.status === 'True');
+        // Check for any warning/error conditions (like FailedCreate)
+        const hasWarningCondition = conditions.some((c: any) => 
+            c.status === 'True' && 
+            (c.type?.includes('Failed') || c.reason?.includes('Failed') || c.reason?.includes('Error') || c.reason?.includes('BackoffLimit'))
+        );
+        
+        let status = 'Pending';
+        if (completeCond) {
+            status = 'Complete';
+        } else if (failedCond || hasWarningCondition) {
+            status = 'Failed';
+        } else if ((item.status?.active || 0) > 0) {
+            status = 'Running';
+        } else if ((item.status?.succeeded || 0) > 0) {
+            status = 'Complete';
+        }
+        addRes(item, 'Job', status);
+    });
+    
+    // CronJobs
+    data.cronjobs.items.forEach((item: any) => {
+        const suspended = item.spec?.suspend === true;
+        const status = suspended ? 'Suspended' : 'Active';
+        addRes(item, 'CronJob', status);
+        // Jobs linked to CronJobs via ownerReferences (handled by addRes)
+    });
+    
+    // HorizontalPodAutoscalers
+    data.hpas.items.forEach((item: any) => {
+        const conditions = item.status?.conditions || [];
+        const ableCond = conditions.find((c: any) => c.type === 'AbleToScale' && c.status === 'True');
+        const scalingActiveCond = conditions.find((c: any) => c.type === 'ScalingActive' && c.status === 'True');
+        let status = 'Unknown';
+        if (ableCond && scalingActiveCond) status = 'Active';
+        else if (ableCond) status = 'Ready';
+        else status = 'Inactive';
+        
+        const hpaId = addRes(item, 'HorizontalPodAutoscaler', status);
+        
+        // Link HPA to its target (Deployment, StatefulSet, etc.)
+        const targetRef = item.spec?.scaleTargetRef;
+        if (targetRef) {
+            const targetKind = targetRef.kind;
+            const targetName = targetRef.name;
+            const ns = item.metadata.namespace;
+            
+            // Find the target resource
+            let targetItems: any[] = [];
+            if (targetKind === 'Deployment') targetItems = data.deployments.items;
+            else if (targetKind === 'StatefulSet') targetItems = data.statefulsets.items;
+            else if (targetKind === 'ReplicaSet') targetItems = data.replicasets.items;
+            
+            const target = targetItems.find((t: any) => t.metadata.name === targetName && t.metadata.namespace === ns);
+            if (target) {
+                links.push({ source: hpaId, target: target.metadata.uid, type: 'owner' });
+            }
+        }
+    });
 
     // Link PVCs, ConfigMaps, Secrets to Pods
     data.pods.items.forEach((pod: any) => {

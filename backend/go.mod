@@ -1,4 +1,4 @@
-module github.com/kube3d/backend
+module github.com/anakosmos/backend
 
 go 1.24.6
 

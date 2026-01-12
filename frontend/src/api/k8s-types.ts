@@ -1,0 +1,231 @@
+/**
+ * Re-export Kubernetes types from @kubernetes/client-node
+ * 
+ * This module provides type-safe access to official Kubernetes API types.
+ * Using these types ensures our internal representations match the K8s API spec.
+ */
+
+// Core types
+export type {
+  V1ObjectMeta,
+  V1LabelSelector,
+  V1LabelSelectorRequirement,
+  V1OwnerReference,
+  V1ManagedFieldsEntry,
+  V1Condition,
+} from '@kubernetes/client-node';
+
+// Pod types
+export type {
+  V1Pod,
+  V1PodSpec,
+  V1PodStatus,
+  V1PodCondition,
+  V1PodTemplateSpec,
+  V1Container,
+  V1ContainerStatus,
+  V1ContainerPort,
+  V1EnvVar,
+  V1EnvVarSource,
+  V1EnvFromSource,
+  V1VolumeMount,
+  V1Volume,
+  V1Probe,
+  V1HTTPGetAction,
+  V1TCPSocketAction,
+  V1ExecAction,
+  V1GRPCAction,
+  V1ResourceRequirements,
+  V1SecurityContext,
+  V1PodSecurityContext,
+  V1Capabilities,
+  V1Lifecycle,
+  V1LifecycleHandler,
+} from '@kubernetes/client-node';
+
+// Deployment types
+export type {
+  V1Deployment,
+  V1DeploymentSpec,
+  V1DeploymentStatus,
+  V1DeploymentCondition,
+  V1DeploymentStrategy,
+  V1RollingUpdateDeployment,
+} from '@kubernetes/client-node';
+
+// ReplicaSet types
+export type {
+  V1ReplicaSet,
+  V1ReplicaSetSpec,
+  V1ReplicaSetStatus,
+  V1ReplicaSetCondition,
+} from '@kubernetes/client-node';
+
+// StatefulSet types
+export type {
+  V1StatefulSet,
+  V1StatefulSetSpec,
+  V1StatefulSetStatus,
+} from '@kubernetes/client-node';
+
+// DaemonSet types
+export type {
+  V1DaemonSet,
+  V1DaemonSetSpec,
+  V1DaemonSetStatus,
+} from '@kubernetes/client-node';
+
+// Service types
+export type {
+  V1Service,
+  V1ServiceSpec,
+  V1ServiceStatus,
+  V1ServicePort,
+} from '@kubernetes/client-node';
+
+// ConfigMap and Secret
+export type {
+  V1ConfigMap,
+  V1Secret,
+} from '@kubernetes/client-node';
+
+// Volumes
+export type {
+  V1PersistentVolumeClaim,
+  V1PersistentVolumeClaimSpec,
+  V1PersistentVolume,
+  V1EmptyDirVolumeSource,
+  V1ConfigMapVolumeSource,
+  V1SecretVolumeSource,
+  V1HostPathVolumeSource,
+  V1PersistentVolumeClaimVolumeSource,
+} from '@kubernetes/client-node';
+
+// Node types
+export type {
+  V1Node,
+  V1NodeSpec,
+  V1NodeStatus,
+  V1NodeCondition,
+  V1Taint,
+  V1Toleration,
+} from '@kubernetes/client-node';
+
+// Scheduling
+export type {
+  V1Affinity,
+  V1NodeAffinity,
+  V1PodAffinity,
+  V1PodAntiAffinity,
+  V1NodeSelector,
+  V1NodeSelectorTerm,
+  V1NodeSelectorRequirement,
+  V1PodAffinityTerm,
+  V1WeightedPodAffinityTerm,
+  V1PreferredSchedulingTerm,
+} from '@kubernetes/client-node';
+
+// Ingress
+export type {
+  V1Ingress,
+  V1IngressSpec,
+  V1IngressStatus,
+  V1IngressRule,
+  V1HTTPIngressPath,
+  V1HTTPIngressRuleValue,
+  V1IngressBackend,
+  V1IngressServiceBackend,
+  V1ServiceBackendPort,
+  V1IngressTLS,
+  V1IngressLoadBalancerStatus,
+  V1IngressLoadBalancerIngress,
+  V1IngressPortStatus,
+} from '@kubernetes/client-node';
+
+// Job/CronJob
+export type {
+  V1Job,
+  V1JobSpec,
+  V1JobStatus,
+  V1JobCondition,
+  V1CronJob,
+  V1CronJobSpec,
+  V1CronJobStatus,
+  V1JobTemplateSpec,
+} from '@kubernetes/client-node';
+
+// HorizontalPodAutoscaler
+export type {
+  V2HorizontalPodAutoscaler,
+  V2HorizontalPodAutoscalerSpec,
+  V2HorizontalPodAutoscalerStatus,
+  V2HorizontalPodAutoscalerCondition,
+  V2CrossVersionObjectReference,
+  V2MetricSpec,
+  V2MetricStatus,
+  V2ResourceMetricSource,
+  V2ResourceMetricStatus,
+  V2ContainerResourceMetricSource,
+  V2ContainerResourceMetricStatus,
+  V2PodsMetricSource,
+  V2PodsMetricStatus,
+  V2ObjectMetricSource,
+  V2ObjectMetricStatus,
+  V2ExternalMetricSource,
+  V2ExternalMetricStatus,
+  V2MetricTarget,
+  V2MetricValueStatus,
+  V2HPAScalingRules,
+  V2HPAScalingPolicy,
+  V2HorizontalPodAutoscalerBehavior,
+} from '@kubernetes/client-node';
+
+// Events
+export type {
+  CoreV1Event,
+  V1EventSource,
+} from '@kubernetes/client-node';
+
+// Also export KubernetesObject for generic handling
+export type { KubernetesObject, KubernetesListObject } from '@kubernetes/client-node';
+
+
+// ============================================
+// Helper type utilities
+// ============================================
+
+/**
+ * Type guard to check if an object is a valid Kubernetes resource
+ */
+export function isKubernetesObject(obj: unknown): obj is KubernetesObject {
+  return (
+    typeof obj === 'object' &&
+    obj !== null &&
+    'apiVersion' in obj &&
+    'kind' in obj
+  );
+}
+
+/**
+ * Extract the resource kind from a Kubernetes object
+ */
+export function getResourceKind(obj: KubernetesObject): string {
+  return obj.kind || 'Unknown';
+}
+
+/**
+ * Get a display name for a Kubernetes resource
+ */
+export function getResourceDisplayName(obj: KubernetesObject): string {
+  return obj.metadata?.name || 'Unnamed';
+}
+
+/**
+ * Get the namespace of a Kubernetes resource
+ */
+export function getResourceNamespace(obj: KubernetesObject): string {
+  return obj.metadata?.namespace || 'default';
+}
+
+// Import KubernetesObject for type guard
+import type { KubernetesObject } from '@kubernetes/client-node';

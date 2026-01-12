@@ -1,0 +1,68 @@
+name: Release Helm Chart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'charts/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "$GITHUB_ACTOR"
+          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package Helm charts
+        run: |
+          mkdir -p .helm-packages
+          for chart in charts/*/; do
+            if [ -f "$chart/Chart.yaml" ]; then
+              helm package "$chart" -d .helm-packages
+            fi
+          done
+
+      - name: Create/Update Helm repository index
+        run: |
+          # Download existing index if it exists
+          if curl -sfL https://gpillon.github.io/anakosmos/index.yaml -o .helm-packages/existing-index.yaml 2>/dev/null; then
+            helm repo index .helm-packages --url https://gpillon.github.io/anakosmos --merge .helm-packages/existing-index.yaml
+            rm .helm-packages/existing-index.yaml
+          else
+            helm repo index .helm-packages --url https://gpillon.github.io/anakosmos
+          fi
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.helm-packages'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

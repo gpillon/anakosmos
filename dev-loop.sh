@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-CLUSTER_NAME="kube3d-dev"
-IMAGE_NAME="localhost/kube3d:latest"
+CLUSTER_NAME="anakosmos-dev"
+IMAGE_NAME="localhost/anakosmos:latest"
 
 # Function to handle cleanup on exit
 cleanup() {
@@ -25,10 +25,10 @@ deploy() {
     kind load docker-image $IMAGE_NAME --name $CLUSTER_NAME
     
     # Restart Deployment
-    kubectl rollout restart deployment/kube3d
+    kubectl rollout restart deployment/anakosmos
     
     # Wait for rollout
-    kubectl rollout status deployment/kube3d --timeout=60s
+    kubectl rollout status deployment/anakosmos --timeout=60s
 }
 
 # Initial Deploy
@@ -40,7 +40,7 @@ echo "To access the application, open http://localhost:33445"
 echo "-------------------------------------------------------"
 
 # Stream Logs in background
-kubectl logs -f -l app=kube3d --all-containers=true &
+kubectl logs -f -l app=anakosmos --all-containers=true &
 LOG_PID=$!
 
 # Watch for changes
@@ -78,6 +78,6 @@ while true; do
     deploy
     
     # Resume Logs
-    kubectl logs -f -l app=kube3d --all-containers=true &
+    kubectl logs -f -l app=anakosmos --all-containers=true &
     LOG_PID=$!
 done

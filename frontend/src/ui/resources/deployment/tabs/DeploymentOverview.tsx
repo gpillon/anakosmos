@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { ClusterResource } from '../../../../api/types';
 import { useClusterStore } from '../../../../store/useClusterStore';
+import { useResourceDetailsStore } from '../../../../store/useResourceDetailsStore';
 import { 
   Activity, 
   CheckCircle2, 
@@ -16,7 +17,8 @@ import {
   ArrowDownCircle,
   Minus,
   Plus,
-  Copy
+  Copy,
+  Box
 } from 'lucide-react';
 import { clsx } from 'clsx';
 
@@ -33,8 +35,9 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
 
   // Store access for ReplicaSets
   const allResources = useClusterStore(state => state.resources);
+  const openDetails = useResourceDetailsStore(state => state.openDetails);
 
-  const [replicas, setReplicas] = useState(spec.replicas || 1);
+  const [replicas, setReplicas] = useState(spec.replicas ?? 1);
   const [saving, setSaving] = useState(false);
   
   // Strategy State
@@ -54,7 +57,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
   const [newAnnotationKey, setNewAnnotationKey] = useState('');
   const [newAnnotationValue, setNewAnnotationValue] = useState('');
 
-  const currentReplicas = spec.replicas || 1;
+  const currentReplicas = spec.replicas ?? 1;
 
   const handleScale = async () => {
     if (replicas === currentReplicas) return;
@@ -209,11 +212,11 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
   const unavailableReplicas = status.unavailableReplicas || 0;
   const updatedReplicas = status.updatedReplicas || 0;
 
-  const healthStatus = readyReplicas === currentReplicas && currentReplicas > 0 
+  const healthStatus = readyReplicas === currentReplicas
     ? 'healthy' 
     : readyReplicas > 0 
       ? 'warning' 
-      : 'error';
+      : currentReplicas === 0 ? 'healthy' : 'error';
 
   const strategy = spec.strategy || {};
   const conditions = status.conditions || [];
@@ -330,8 +333,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
         <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
           <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <GitBranch size={16} className="text-slate-400" />
-              <span className="font-semibold text-slate-200">Update Strategy</span>
+            <GitBranch size={16} className="text-slate-400" />
+            <span className="font-semibold text-slate-200">Update Strategy</span>
             </div>
             <button
               onClick={() => setEditingStrategy(!editingStrategy)}
@@ -392,15 +395,15 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
               </div>
             ) : (
               <>
-                <MetaRow label="Type" value={strategy.type || 'RollingUpdate'} />
-                {strategy.type === 'RollingUpdate' && strategy.rollingUpdate && (
-                  <>
-                    <MetaRow label="Max Unavailable" value={strategy.rollingUpdate.maxUnavailable} />
-                    <MetaRow label="Max Surge" value={strategy.rollingUpdate.maxSurge} />
-                  </>
-                )}
-                <MetaRow label="Min Ready Seconds" value={spec.minReadySeconds || 0} />
-                <MetaRow label="Progress Deadline" value={`${spec.progressDeadlineSeconds || 600}s`} />
+            <MetaRow label="Type" value={strategy.type || 'RollingUpdate'} />
+            {strategy.type === 'RollingUpdate' && strategy.rollingUpdate && (
+              <>
+                <MetaRow label="Max Unavailable" value={strategy.rollingUpdate.maxUnavailable} />
+                <MetaRow label="Max Surge" value={strategy.rollingUpdate.maxSurge} />
+              </>
+            )}
+            <MetaRow label="Min Ready Seconds" value={spec.minReadySeconds || 0} />
+            <MetaRow label="Progress Deadline" value={`${spec.progressDeadlineSeconds || 600}s`} />
               </>
             )}
           </div>
@@ -478,23 +481,39 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                       
                       {/* Pods Grid */}
                       {hasPods ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
+                        <div className="mt-2 flex flex-wrap gap-2">
                           {pods.map(pod => {
                             const podPhase = pod.status as string; // 'Running', 'Pending', etc.
                             const isReady = pod.raw?.status?.conditions?.find((c: any) => c.type === 'Ready' && c.status === 'True');
+                            const shortName = pod.name.replace(rs.name + '-', '');
                             
                             return (
-                              <div 
-                                key={pod.id} 
+                              <button 
+                                key={pod.id}
+                                onClick={() => openDetails(pod.id)}
                                 className={clsx(
-                                  "w-3 h-3 rounded-full border",
-                                  podPhase === 'Running' && isReady ? "bg-emerald-500 border-emerald-400" :
-                                  podPhase === 'Running' ? "bg-blue-500 border-blue-400" :
-                                  podPhase === 'Pending' ? "bg-amber-500 border-amber-400" :
-                                  "bg-red-500 border-red-400"
+                                  "flex items-center gap-1.5 px-2 py-1 rounded-md border text-xs font-mono transition-all cursor-pointer",
+                                  "hover:scale-105 hover:shadow-lg",
+                                  podPhase === 'Running' && isReady 
+                                    ? "bg-emerald-900/30 border-emerald-700/50 text-emerald-300 hover:bg-emerald-900/50 hover:border-emerald-600" 
+                                    : podPhase === 'Running' 
+                                    ? "bg-blue-900/30 border-blue-700/50 text-blue-300 hover:bg-blue-900/50 hover:border-blue-600" 
+                                    : podPhase === 'Pending' 
+                                    ? "bg-amber-900/30 border-amber-700/50 text-amber-300 hover:bg-amber-900/50 hover:border-amber-600" 
+                                    : "bg-red-900/30 border-red-700/50 text-red-300 hover:bg-red-900/50 hover:border-red-600"
                                 )}
-                                title={`${pod.name} (${podPhase})`}
-                              />
+                                title={`${pod.name} (${podPhase}${isReady ? ', Ready' : ''})`}
+                              >
+                                <Box size={12} />
+                                <span className="truncate max-w-[80px]">{shortName}</span>
+                                <span className={clsx(
+                                  "w-2 h-2 rounded-full shrink-0",
+                                  podPhase === 'Running' && isReady ? "bg-emerald-400" :
+                                  podPhase === 'Running' ? "bg-blue-400" :
+                                  podPhase === 'Pending' ? "bg-amber-400 animate-pulse" :
+                                  "bg-red-400"
+                                )} />
+                              </button>
                             );
                           })}
                         </div>

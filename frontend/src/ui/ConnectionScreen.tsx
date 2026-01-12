@@ -92,7 +92,7 @@ export const ConnectionScreen: React.FC = () => {
     <div className="flex flex-col items-center justify-center w-screen h-screen bg-slate-900 text-white overflow-y-auto py-10">
       <div className="w-full max-w-md p-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700">
         <h1 className="text-3xl font-bold mb-2 text-center bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-          Kube3D
+          Anakosmos
         </h1>
         <p className="text-slate-400 text-center mb-8">
           {step === 'auth' ? 'Authenticate' : 'Select a connection method'}

@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle
 } from 'lucide-react';
+import { Combobox, useServiceAccountNames, useSecretNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
@@ -21,6 +22,7 @@ interface Props {
 
 export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
   const raw = resource.raw;
+  const namespace = resource.namespace;
   const template = raw?.spec?.template?.spec || {};
   
   const [serviceAccountName, setServiceAccountName] = useState<string>(template.serviceAccountName || '');
@@ -34,6 +36,10 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
   
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  
+  // Get available resources
+  const serviceAccountNames = useServiceAccountNames(namespace);
+  const secretNames = useSecretNames(namespace);
 
   const handleSave = async () => {
     setSaving(true);
@@ -94,20 +100,22 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
       )}
 
       {/* Service Account */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
           <User size={16} className="text-blue-400" />
           <span className="font-semibold text-slate-200">Service Account</span>
         </div>
         <div className="p-4 space-y-4">
           <div>
             <label className="text-xs text-slate-400 mb-1 block">Service Account Name</label>
-            <input
-              type="text"
+            <Combobox
               value={serviceAccountName}
-              onChange={(e) => { setServiceAccountName(e.target.value); markChanged(); }}
-              placeholder="default"
-              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              onChange={(v) => { setServiceAccountName(v); markChanged(); }}
+              options={serviceAccountNames}
+              placeholder="Select or type service account..."
+              allowCustom={true}
+              size="md"
+              emptyMessage="No ServiceAccounts in namespace"
             />
             <p className="text-xs text-slate-500 mt-1">
               Leave empty to use "default" service account
@@ -129,8 +137,8 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
       </div>
 
       {/* Image Pull Secrets */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-2">
             <FileKey size={16} className="text-amber-400" />
             <span className="font-semibold text-slate-200">Image Pull Secrets</span>
@@ -149,18 +157,22 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <div className="space-y-2">
               {imagePullSecrets.map((secret, i) => (
                 <div key={i} className="flex gap-2 items-center">
-                  <input
-                    type="text"
-                    value={secret.name}
-                    onChange={(e) => {
-                      const newSecrets = [...imagePullSecrets];
-                      newSecrets[i] = { name: e.target.value };
-                      setImagePullSecrets(newSecrets);
-                      markChanged();
-                    }}
-                    placeholder="Secret name"
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white"
-                  />
+                  <div className="flex-1">
+                    <Combobox
+                      value={secret.name}
+                      onChange={(v) => {
+                        const newSecrets = [...imagePullSecrets];
+                        newSecrets[i] = { name: v };
+                        setImagePullSecrets(newSecrets);
+                        markChanged();
+                      }}
+                      options={secretNames}
+                      placeholder="Select Secret..."
+                      allowCustom={true}
+                      size="sm"
+                      emptyMessage="No Secrets in namespace"
+                    />
+                  </div>
                   <button
                     onClick={() => {
                       setImagePullSecrets(imagePullSecrets.filter((_, idx) => idx !== i));
@@ -178,8 +190,8 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
       </div>
 
       {/* Pod Security Context */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
           <Shield size={16} className="text-emerald-400" />
           <span className="font-semibold text-slate-200">Pod Security Context</span>
         </div>
@@ -452,8 +464,8 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
       </div>
 
       {/* Host Namespaces */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
           <AlertTriangle size={16} className="text-red-400" />
           <span className="font-semibold text-slate-200">Host Namespaces</span>
           <span className="text-xs text-red-400 bg-red-900/30 px-2 py-0.5 rounded">Privileged</span>

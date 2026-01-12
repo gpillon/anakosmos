@@ -141,7 +141,7 @@ export const useSettingsStore = create<SettingsStore>()(
       })),
     }),
     {
-      name: 'kube3d-settings',
+      name: 'anakosmos-settings',
       partialize: (state) => ({ 
         savedConnections: state.savedConnections,
         groupBy: state.groupBy,

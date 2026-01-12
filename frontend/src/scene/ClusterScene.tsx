@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Grid, Environment, CameraControls, Instances, Instance, Html } from '@react-three/drei';
+import { Grid, Environment, CameraControls, Instances, Instance, Html, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -16,7 +16,8 @@ import {
   nodeGeo, podGeo, serviceGeo, deployGeo, 
   statefulGeo, daemonGeo, replicaGeo,
   octGeo, diamondGeo, smallBoxGeo, pyramidGeo,
-  puckGeo, barrelGeo, slabGeo, torusKnotGeo, hexPrismGeo, tetraGeo 
+  puckGeo, barrelGeo, slabGeo, torusKnotGeo, hexPrismGeo, tetraGeo,
+  jobGeo, cronJobGeo, hpaGeo 
 } from './sharedResources';
 import { KIND_COLOR_MAP, KIND_GEOMETRY_MAP, DEFAULT_COLOR, DEFAULT_GEOMETRY } from '../config/resourceKinds';
 import type { GeometryType } from '../config/resourceKinds';
@@ -248,7 +249,8 @@ const InstancedNodes: React.FC<{
         
         // Status Check
         const isUnhealthy = res.health === 'warning' || res.health === 'error';
-        const isLegacyUnhealthy = !['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded'].includes(res.status);
+        // Added 'Complete' for Jobs, 'Suspended' for CronJobs (not unhealthy, just paused)
+        const isLegacyUnhealthy = !['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded', 'Complete', 'Suspended'].includes(res.status);
         const finalIsUnhealthy = res.health ? isUnhealthy : isLegacyUnhealthy;
         
         const statusFilter = statusFilters[res.kind]?.[res.status] || 'default';
@@ -434,6 +436,9 @@ export const ClusterScene: React.FC = () => {
     torusKnot: torusKnotGeo, // torus knot
     hexPrism: hexPrismGeo,   // hexagonal prism
     tetra: tetraGeo,         // tetrahedron (fallback)
+    job: jobGeo,             // flat box
+    cronJob: cronJobGeo,     // rotated flat box
+    hpa: hpaGeo,             // thin ring
   };
 
   const getGeometryForKind = (kind: string) => {
@@ -445,10 +450,15 @@ export const ClusterScene: React.FC = () => {
     return KIND_COLOR_MAP[kind] || DEFAULT_COLOR;
   };
 
+  const resourceCount = Object.keys(resources).length;
+  // Show loading overlay when we don't have positions yet
+  // Note: if resourceCount is 0 (empty cluster or all filtered), LayoutEngine sets hasPositions=true immediately
+  const showLoadingOverlay = !hasPositions;
+
   return (
     <div className="absolute inset-0 z-0 bg-slate-900">
       {/* Physics Initialization Overlay */}
-      {!hasPositions && Object.keys(resources).length > 0 && (
+      {showLoadingOverlay && (
         <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/90 backdrop-blur-sm text-white transition-opacity duration-500">
           <div className="flex flex-col items-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
             <div className="relative w-20 h-20">
@@ -460,13 +470,15 @@ export const ClusterScene: React.FC = () => {
             </div>
             <div className="text-center space-y-2">
               <h2 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                Stabilizing Cluster
+                {resourceCount > 0 ? 'Stabilizing Cluster' : 'Loading Resources'}
               </h2>
               <div className="flex flex-col gap-1 text-sm text-slate-400">
-                <p>Initializing physics engine...</p>
-                <p className="font-mono text-xs text-slate-500">
-                  Calculated {Object.keys(resources).length} nodes
-                </p>
+                <p>{resourceCount > 0 ? 'Initializing physics engine...' : 'Fetching cluster data...'}</p>
+                {resourceCount > 0 && (
+                  <p className="font-mono text-xs text-slate-500">
+                    Calculated {resourceCount} nodes
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -475,6 +487,8 @@ export const ClusterScene: React.FC = () => {
 
       <Canvas camera={{ position: [15, 15, 15], fov: 50, far: 5000 }} onPointerMissed={handleMiss}>
         <color attach="background" args={['#050505']} />
+        
+        <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />
         
         <ambientLight intensity={1.5} />
         <pointLight position={[10, 20, 10]} intensity={2} />

@@ -15,6 +15,7 @@ import {
   Grid3X3,
   Layers
 } from 'lucide-react';
+import { Combobox, useNodeNames, usePriorityClassNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
@@ -35,6 +36,10 @@ export const DeploymentScheduling: React.FC<Props> = ({ resource, onApply }) => 
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string>('nodeSelector');
+  
+  // Get available cluster resources
+  const nodeNames = useNodeNames();
+  const priorityClassNames = usePriorityClassNames();
 
   const handleSave = async () => {
     setSaving(true);
@@ -81,23 +86,25 @@ export const DeploymentScheduling: React.FC<Props> = ({ resource, onApply }) => 
       )}
 
       {/* Node Name (Direct Assignment) */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
           <Server size={16} className="text-purple-400" />
           <span className="font-semibold text-slate-200">Direct Node Assignment</span>
         </div>
         <div className="p-4">
           <div className="mb-2">
             <label className="text-xs text-slate-400 mb-1 block">Node Name</label>
-            <input
-              type="text"
+            <Combobox
               value={nodeName}
-              onChange={(e) => { setNodeName(e.target.value); markChanged(); }}
+              onChange={(v) => { setNodeName(v); markChanged(); }}
+              options={nodeNames}
               placeholder="Leave empty for scheduler to decide"
-              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+              allowCustom={true}
+              size="md"
+              emptyMessage="No nodes available"
             />
           </div>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-slate-500 mt-2">
             Directly assign pods to a specific node by name. Usually you should use nodeSelector or affinity instead.
           </p>
         </div>
@@ -248,18 +255,20 @@ export const DeploymentScheduling: React.FC<Props> = ({ resource, onApply }) => 
       </CollapsibleSection>
 
       {/* Priority Class */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
           <Target size={16} className="text-red-400" />
           <span className="font-semibold text-slate-200">Priority Class</span>
         </div>
         <div className="p-4">
-          <input
-            type="text"
+          <Combobox
             value={priorityClassName}
-            onChange={(e) => { setPriorityClassName(e.target.value); markChanged(); }}
-            placeholder="e.g., high-priority, system-cluster-critical"
-            className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
+            onChange={(v) => { setPriorityClassName(v); markChanged(); }}
+            options={priorityClassNames}
+            placeholder="Select priority class..."
+            allowCustom={true}
+            size="md"
+            emptyMessage="No PriorityClasses available"
           />
           <p className="text-xs text-slate-500 mt-2">
             PriorityClass determines the scheduling priority and preemption behavior.
@@ -280,9 +289,9 @@ const CollapsibleSection: React.FC<{
   count?: number;
   children: React.ReactNode;
 }> = ({ title, subtitle, icon, isExpanded, onToggle, count, children }) => (
-  <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
+  <div className="bg-slate-900/50 rounded-xl border border-slate-800">
     <div 
-      className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-3 cursor-pointer hover:bg-slate-800/70 transition-colors"
+      className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-3 cursor-pointer hover:bg-slate-800/70 transition-colors"
       onClick={onToggle}
     >
       {isExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}

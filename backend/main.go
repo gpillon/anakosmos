@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"path/filepath"
 
-	"github.com/kube3d/backend/src/api"
-	"github.com/kube3d/backend/src/k8s"
+	"github.com/anakosmos/backend/src/api"
+	"github.com/anakosmos/backend/src/k8s"
 
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"

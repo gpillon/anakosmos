@@ -17,6 +17,9 @@ let namespacePositionCache: Map<string, { x: number; y: number; radius: number }
 // Cache for data fingerprint to avoid unnecessary simulation restarts
 let lastDataFingerprint = '';
 
+// Track previous namespace projection state to detect toggles
+let lastNamespaceProjectionState: boolean | null = null;
+
 /**
  * Generate a simple fingerprint of the current data to detect real changes
  */
@@ -268,10 +271,20 @@ ctx.onmessage = (e: MessageEvent<SimulationMessage>) => {
         simulation.tick(30); // 30 iterations silent warmup
     }
 
+    // Detect namespace projection toggle
+    const projectionToggled = lastNamespaceProjectionState !== null && 
+                              lastNamespaceProjectionState !== enableNamespaceProjection;
+    lastNamespaceProjectionState = enableNamespaceProjection;
+
     // B. Temperature Control
     // If updating, restart with low alpha (heat) to avoid explosion
     // If init, full heat.
-    const startAlpha = type === 'update' ? 0.05 : 1.0;
+    // IMPORTANT: If namespace projection was toggled, use higher alpha to allow
+    // nodes to move toward their new namespace centers (or away from them)
+    let startAlpha = type === 'update' ? 0.05 : 1.0;
+    if (projectionToggled) {
+        startAlpha = 0.3; // Higher energy to reorganize the layout
+    }
     simulation.alpha(startAlpha).restart();
     
     // Throttling State

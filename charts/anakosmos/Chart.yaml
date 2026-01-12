@@ -1,0 +1,19 @@
+apiVersion: v2
+name: anakosmos
+description: A Helm chart for Anakosmos - 3D Kubernetes Administration Dashboard
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - dashboard
+  - 3d
+  - visualization
+  - monitoring
+home: https://github.com/gpillon/anakosmos
+sources:
+  - https://github.com/gpillon/anakosmos
+maintainers:
+  - name: gpillon
+    url: https://github.com/gpillon
+icon: https://raw.githubusercontent.com/kubernetes/kubernetes/master/logo/logo.png

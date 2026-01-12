@@ -16,9 +16,17 @@ export const TerminalWindow: React.FC = () => {
     closeTerminal, 
     closeSession, 
     setActiveSession,
+    lastFocusTimestamp
   } = useTerminalStore();
 
   const [isMinimized, setIsMinimized] = React.useState(false);
+
+  // Automatically maximize if a new session is opened or focused while minimized
+  useEffect(() => {
+    if (isOpen && isMinimized) {
+        setIsMinimized(false);
+    }
+  }, [lastFocusTimestamp]); // Dependencies: whenever focus is requested
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const handleCloseRequest = () => {
@@ -39,7 +47,7 @@ export const TerminalWindow: React.FC = () => {
   return (
     <>
         <div className={clsx(
-        "fixed z-50 bg-slate-950 border border-slate-700 shadow-2xl transition-all duration-300 flex flex-col font-mono text-sm",
+        "fixed z-[60] bg-slate-950 border border-slate-700 shadow-2xl transition-all duration-300 flex flex-col font-mono text-sm",
         isMinimized 
             ? "bottom-0 right-0 w-96 h-12 rounded-t-lg overflow-hidden" 
             : "inset-x-10 bottom-10 top-20 rounded-lg"
@@ -278,7 +286,7 @@ const SessionContent: React.FC<{ session: TerminalSession, isActive: boolean, is
 
   // Refit when active/visible
   useEffect(() => {
-    if (isActive && fitAddonRef.current) {
+    if (isActive && !isMinimized && fitAddonRef.current) {
         requestAnimationFrame(() => {
             fitAddonRef.current?.fit();
             terminalRef.current?.focus();

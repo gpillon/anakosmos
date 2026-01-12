@@ -18,6 +18,12 @@ export const slabGeo = new THREE.BoxGeometry(1, 0.15, 1);                       
 export const torusKnotGeo = new THREE.TorusKnotGeometry(0.3, 0.1, 64, 8, 2, 3); // NAD: torus knot
 export const hexPrismGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.5, 6);        // NNCP: hexagonal prism
 export const tetraGeo = new THREE.TetrahedronGeometry(0.5);                     // Fallback: tetrahedron
+export const jobGeo = new THREE.BoxGeometry(0.5, 0.3, 0.5);                     // Job: flat box
+export const cronJobGeo = new THREE.BoxGeometry(0.5, 0.3, 0.5);                 // CronJob: flat box (rotated)
+export const hpaGeo = new THREE.TorusGeometry(0.4, 0.08, 8, 32);                // HPA: thin ring (scale)
+
+// Rotate CronJob geometry slightly for distinction
+cronJobGeo.rotateY(Math.PI / 4);
 
 // Scale the diamond vertically for Route
 diamondGeo.scale(1, 1.5, 1);

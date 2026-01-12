@@ -18,7 +18,7 @@ export const Onboarding: React.FC = () => {
           <X size={20} />
         </button>
 
-        <h2 className="text-2xl font-bold text-white mb-4">Welcome to Kube3D</h2>
+        <h2 className="text-2xl font-bold text-white mb-4">Welcome to Anakosmos</h2>
         <p className="text-slate-300 mb-6 leading-relaxed">
           A new way to visualize your Kubernetes cluster. Explore resources in a 3D space, understand relationships, and monitor health in real-time.
         </p>

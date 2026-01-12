@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Settings
 } from 'lucide-react';
+import { Combobox, useConfigMapNames, useSecretNames, usePVCNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
@@ -74,6 +75,7 @@ const volumeTypeLabels: Record<VolumeType, string> = {
 
 export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
   const raw = resource.raw;
+  const namespace = resource.namespace;
   const template = raw?.spec?.template?.spec || {};
   const [volumes, setVolumes] = useState<VolumeSpec[]>(template.volumes || []);
   const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());
@@ -199,8 +201,8 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
       )}
 
       {/* Volumes Section */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-2">
             <HardDrive size={16} className="text-emerald-400" />
             <span className="font-semibold text-slate-200">Volumes</span>
@@ -268,6 +270,7 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
                         type={type} 
                         onUpdate={(updates) => updateVolume(idx, updates)}
                         mounts={mounts}
+                        namespace={namespace}
                       />
                     </div>
                   )}
@@ -365,9 +368,10 @@ interface VolumeEditorProps {
   type: VolumeType;
   onUpdate: (updates: Partial<VolumeSpec>) => void;
   mounts: Array<{ name: string; mount: any }>;
+  namespace: string;
 }
 
-const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mounts }) => {
+const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mounts, namespace }) => {
   return (
     <div className="space-y-4">
       {/* Name field */}
@@ -383,11 +387,11 @@ const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mou
 
       {/* Type-specific editors */}
       {type === 'emptyDir' && <EmptyDirEditor volume={volume} onUpdate={onUpdate} />}
-      {type === 'configMap' && <ConfigMapVolumeEditor volume={volume} onUpdate={onUpdate} />}
-      {type === 'secret' && <SecretVolumeEditor volume={volume} onUpdate={onUpdate} />}
-      {type === 'persistentVolumeClaim' && <PVCVolumeEditor volume={volume} onUpdate={onUpdate} />}
+      {type === 'configMap' && <ConfigMapVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
+      {type === 'secret' && <SecretVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
+      {type === 'persistentVolumeClaim' && <PVCVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
       {type === 'hostPath' && <HostPathVolumeEditor volume={volume} onUpdate={onUpdate} />}
-      {type === 'projected' && <ProjectedVolumeEditor volume={volume} onUpdate={onUpdate} />}
+      {type === 'projected' && <ProjectedVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
       {type === 'downwardAPI' && <DownwardAPIVolumeEditor volume={volume} onUpdate={onUpdate} />}
       {type === 'nfs' && <NFSVolumeEditor volume={volume} onUpdate={onUpdate} />}
       {type === 'csi' && <CSIVolumeEditor volume={volume} onUpdate={onUpdate} />}
@@ -440,117 +444,132 @@ const EmptyDirEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<Volum
 );
 
 // ConfigMap Volume Editor
-const ConfigMapVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="text-xs text-slate-400 mb-1 block">ConfigMap Name *</label>
-        <input
-          type="text"
-          value={volume.configMap?.name || ''}
-          onChange={(e) => onUpdate({ configMap: { ...volume.configMap!, name: e.target.value } })}
-          placeholder="my-configmap"
-          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-        />
+const ConfigMapVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+  const configMapNames = useConfigMapNames(namespace);
+  
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-slate-400 mb-1 block">ConfigMap Name *</label>
+          <Combobox
+            value={volume.configMap?.name || ''}
+            onChange={(v) => onUpdate({ configMap: { ...volume.configMap!, name: v } })}
+            options={configMapNames}
+            placeholder="Select ConfigMap..."
+            allowCustom={true}
+            emptyMessage="No ConfigMaps in namespace"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-400 mb-1 block">Default Mode</label>
+          <input
+            type="text"
+            value={volume.configMap?.defaultMode !== undefined ? volume.configMap.defaultMode.toString(8) : ''}
+            onChange={(e) => {
+              const mode = parseInt(e.target.value, 8);
+              onUpdate({ configMap: { ...volume.configMap!, defaultMode: isNaN(mode) ? undefined : mode } });
+            }}
+            placeholder="0644"
+            className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+          />
+        </div>
       </div>
-      <div>
-        <label className="text-xs text-slate-400 mb-1 block">Default Mode</label>
+      <label className="flex items-center gap-2 cursor-pointer">
         <input
-          type="text"
-          value={volume.configMap?.defaultMode !== undefined ? volume.configMap.defaultMode.toString(8) : ''}
-          onChange={(e) => {
-            const mode = parseInt(e.target.value, 8);
-            onUpdate({ configMap: { ...volume.configMap!, defaultMode: isNaN(mode) ? undefined : mode } });
-          }}
-          placeholder="0644"
-          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+          type="checkbox"
+          checked={volume.configMap?.optional || false}
+          onChange={(e) => onUpdate({ configMap: { ...volume.configMap!, optional: e.target.checked || undefined } })}
+          className="w-4 h-4 rounded border-slate-600 bg-slate-800"
         />
-      </div>
-    </div>
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={volume.configMap?.optional || false}
-        onChange={(e) => onUpdate({ configMap: { ...volume.configMap!, optional: e.target.checked || undefined } })}
-        className="w-4 h-4 rounded border-slate-600 bg-slate-800"
+        <span className="text-sm text-slate-300">Optional (don't fail if ConfigMap doesn't exist)</span>
+      </label>
+      <ItemsEditor
+        items={volume.configMap?.items}
+        onUpdate={(items) => onUpdate({ configMap: { ...volume.configMap!, items: items.length > 0 ? items : undefined } })}
       />
-      <span className="text-sm text-slate-300">Optional (don't fail if ConfigMap doesn't exist)</span>
-    </label>
-    <ItemsEditor
-      items={volume.configMap?.items}
-      onUpdate={(items) => onUpdate({ configMap: { ...volume.configMap!, items: items.length > 0 ? items : undefined } })}
-    />
-  </div>
-);
+    </div>
+  );
+};
 
 // Secret Volume Editor
-const SecretVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
-  <div className="space-y-4">
-    <div className="grid grid-cols-2 gap-4">
-      <div>
-        <label className="text-xs text-slate-400 mb-1 block">Secret Name *</label>
-        <input
-          type="text"
-          value={volume.secret?.secretName || ''}
-          onChange={(e) => onUpdate({ secret: { ...volume.secret!, secretName: e.target.value } })}
-          placeholder="my-secret"
-          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-        />
+const SecretVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+  const secretNames = useSecretNames(namespace);
+  
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs text-slate-400 mb-1 block">Secret Name *</label>
+          <Combobox
+            value={volume.secret?.secretName || ''}
+            onChange={(v) => onUpdate({ secret: { ...volume.secret!, secretName: v } })}
+            options={secretNames}
+            placeholder="Select Secret..."
+            allowCustom={true}
+            emptyMessage="No Secrets in namespace"
+          />
+        </div>
+        <div>
+          <label className="text-xs text-slate-400 mb-1 block">Default Mode</label>
+          <input
+            type="text"
+            value={volume.secret?.defaultMode !== undefined ? volume.secret.defaultMode.toString(8) : ''}
+            onChange={(e) => {
+              const mode = parseInt(e.target.value, 8);
+              onUpdate({ secret: { ...volume.secret!, defaultMode: isNaN(mode) ? undefined : mode } });
+            }}
+            placeholder="0644"
+            className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+          />
+        </div>
       </div>
-      <div>
-        <label className="text-xs text-slate-400 mb-1 block">Default Mode</label>
+      <label className="flex items-center gap-2 cursor-pointer">
         <input
-          type="text"
-          value={volume.secret?.defaultMode !== undefined ? volume.secret.defaultMode.toString(8) : ''}
-          onChange={(e) => {
-            const mode = parseInt(e.target.value, 8);
-            onUpdate({ secret: { ...volume.secret!, defaultMode: isNaN(mode) ? undefined : mode } });
-          }}
-          placeholder="0644"
-          className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
+          type="checkbox"
+          checked={volume.secret?.optional || false}
+          onChange={(e) => onUpdate({ secret: { ...volume.secret!, optional: e.target.checked || undefined } })}
+          className="w-4 h-4 rounded border-slate-600 bg-slate-800"
         />
-      </div>
-    </div>
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={volume.secret?.optional || false}
-        onChange={(e) => onUpdate({ secret: { ...volume.secret!, optional: e.target.checked || undefined } })}
-        className="w-4 h-4 rounded border-slate-600 bg-slate-800"
+        <span className="text-sm text-slate-300">Optional (don't fail if Secret doesn't exist)</span>
+      </label>
+      <ItemsEditor
+        items={volume.secret?.items}
+        onUpdate={(items) => onUpdate({ secret: { ...volume.secret!, items: items.length > 0 ? items : undefined } })}
       />
-      <span className="text-sm text-slate-300">Optional (don't fail if Secret doesn't exist)</span>
-    </label>
-    <ItemsEditor
-      items={volume.secret?.items}
-      onUpdate={(items) => onUpdate({ secret: { ...volume.secret!, items: items.length > 0 ? items : undefined } })}
-    />
-  </div>
-);
+    </div>
+  );
+};
 
 // PVC Volume Editor
-const PVCVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
-  <div className="space-y-4">
-    <div>
-      <label className="text-xs text-slate-400 mb-1 block">Claim Name *</label>
-      <input
-        type="text"
-        value={volume.persistentVolumeClaim?.claimName || ''}
-        onChange={(e) => onUpdate({ persistentVolumeClaim: { ...volume.persistentVolumeClaim!, claimName: e.target.value } })}
-        placeholder="my-pvc"
-        className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
-      />
+const PVCVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+  const pvcNames = usePVCNames(namespace);
+  
+  return (
+    <div className="space-y-4">
+      <div>
+        <label className="text-xs text-slate-400 mb-1 block">Claim Name *</label>
+        <Combobox
+          value={volume.persistentVolumeClaim?.claimName || ''}
+          onChange={(v) => onUpdate({ persistentVolumeClaim: { ...volume.persistentVolumeClaim!, claimName: v } })}
+          options={pvcNames}
+          placeholder="Select PersistentVolumeClaim..."
+          allowCustom={true}
+          emptyMessage="No PVCs in namespace"
+        />
+      </div>
+      <label className="flex items-center gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={volume.persistentVolumeClaim?.readOnly || false}
+          onChange={(e) => onUpdate({ persistentVolumeClaim: { ...volume.persistentVolumeClaim!, readOnly: e.target.checked || undefined } })}
+          className="w-4 h-4 rounded border-slate-600 bg-slate-800"
+        />
+        <span className="text-sm text-slate-300">Read Only</span>
+      </label>
     </div>
-    <label className="flex items-center gap-2 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={volume.persistentVolumeClaim?.readOnly || false}
-        onChange={(e) => onUpdate({ persistentVolumeClaim: { ...volume.persistentVolumeClaim!, readOnly: e.target.checked || undefined } })}
-        className="w-4 h-4 rounded border-slate-600 bg-slate-800"
-      />
-      <span className="text-sm text-slate-300">Read Only</span>
-    </label>
-  </div>
-);
+  );
+};
 
 // Host Path Volume Editor
 const HostPathVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
@@ -589,8 +608,10 @@ const HostPathVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial
 );
 
 // Projected Volume Editor
-const ProjectedVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => {
+const ProjectedVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
   const sources = volume.projected?.sources || [];
+  const configMapNames = useConfigMapNames(namespace);
+  const secretNames = useSecretNames(namespace);
 
   const addSource = (type: 'configMap' | 'secret' | 'serviceAccountToken' | 'downwardAPI') => {
     const newSource: any = {};
@@ -637,19 +658,49 @@ const ProjectedVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partia
                 <span className="text-xs text-slate-400 w-24">
                   {source.configMap ? 'ConfigMap' : source.secret ? 'Secret' : source.serviceAccountToken ? 'SA Token' : 'DownwardAPI'}
                 </span>
-                <input
-                  type="text"
-                  value={source.configMap?.name || source.secret?.name || source.serviceAccountToken?.path || ''}
-                  onChange={(e) => {
-                    const newSources = [...sources];
-                    if (source.configMap) newSources[i] = { configMap: { ...source.configMap, name: e.target.value } };
-                    else if (source.secret) newSources[i] = { secret: { ...source.secret, name: e.target.value } };
-                    else if (source.serviceAccountToken) newSources[i] = { serviceAccountToken: { ...source.serviceAccountToken, path: e.target.value } };
-                    onUpdate({ projected: { ...volume.projected!, sources: newSources } });
-                  }}
-                  placeholder={source.configMap || source.secret ? 'Name' : 'Path'}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                />
+                {source.configMap ? (
+                  <div className="flex-1">
+                    <Combobox
+                      value={source.configMap.name || ''}
+                      onChange={(v) => {
+                        const newSources = [...sources];
+                        newSources[i] = { configMap: { ...source.configMap, name: v } };
+                        onUpdate({ projected: { ...volume.projected!, sources: newSources } });
+                      }}
+                      options={configMapNames}
+                      placeholder="Select ConfigMap..."
+                      allowCustom={true}
+                      size="sm"
+                    />
+                  </div>
+                ) : source.secret ? (
+                  <div className="flex-1">
+                    <Combobox
+                      value={source.secret.name || ''}
+                      onChange={(v) => {
+                        const newSources = [...sources];
+                        newSources[i] = { secret: { ...source.secret, name: v } };
+                        onUpdate({ projected: { ...volume.projected!, sources: newSources } });
+                      }}
+                      options={secretNames}
+                      placeholder="Select Secret..."
+                      allowCustom={true}
+                      size="sm"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    value={source.serviceAccountToken?.path || ''}
+                    onChange={(e) => {
+                      const newSources = [...sources];
+                      if (source.serviceAccountToken) newSources[i] = { serviceAccountToken: { ...source.serviceAccountToken, path: e.target.value } };
+                      onUpdate({ projected: { ...volume.projected!, sources: newSources } });
+                    }}
+                    placeholder="Path"
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                  />
+                )}
                 <button
                   onClick={() => {
                     onUpdate({ projected: { ...volume.projected!, sources: sources.filter((_: any, idx: number) => idx !== i) } });

@@ -21,6 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Combobox, useConfigMapNames, useSecretNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
@@ -78,6 +79,7 @@ interface ContainerSecurityContext {
 
 export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => {
   const raw = resource.raw;
+  const namespace = resource.namespace;
   const template = raw?.spec?.template?.spec || {};
   const [containers, setContainers] = useState<ContainerSpec[]>(template.containers || []);
   const [initContainers, setInitContainers] = useState<ContainerSpec[]>(template.initContainers || []);
@@ -172,8 +174,8 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
       )}
 
       {/* Main Containers Section */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Box size={16} className="text-blue-400" />
             <span className="font-semibold text-slate-200">Containers</span>
@@ -198,14 +200,15 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
               onUpdate={(updates) => updateContainer(idx, updates)}
               onRemove={containers.length > 1 ? () => removeContainer(idx) : undefined}
               volumes={template.volumes || []}
+              namespace={namespace}
             />
           ))}
         </div>
       </div>
 
       {/* Init Containers Section */}
-      <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
-        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center justify-between">
+      <div className="bg-slate-900/50 rounded-xl border border-slate-800">
+        <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Play size={16} className="text-purple-400" />
             <span className="font-semibold text-slate-200">Init Containers</span>
@@ -237,6 +240,7 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
                 onUpdate={(updates) => updateContainer(idx, updates, true)}
                 onRemove={() => removeContainer(idx, true)}
                 volumes={template.volumes || []}
+                namespace={namespace}
                 isInit
               />
             ))}
@@ -256,6 +260,7 @@ interface ContainerEditorProps {
   onUpdate: (updates: Partial<ContainerSpec>) => void;
   onRemove?: () => void;
   volumes: any[];
+  namespace: string;
   isInit?: boolean;
 }
 
@@ -266,6 +271,7 @@ const ContainerEditor: React.FC<ContainerEditorProps> = ({
   onUpdate,
   onRemove,
   volumes,
+  namespace,
   isInit
 }) => {
   const [activeSection, setActiveSection] = useState('basic');
@@ -327,7 +333,7 @@ const ContainerEditor: React.FC<ContainerEditorProps> = ({
             <BasicSection container={container} onUpdate={onUpdate} />
           )}
           {activeSection === 'env' && (
-            <EnvironmentSection container={container} onUpdate={onUpdate} />
+            <EnvironmentSection container={container} onUpdate={onUpdate} namespace={namespace} />
           )}
           {activeSection === 'resources' && (
             <ResourcesSection container={container} onUpdate={onUpdate} />
@@ -336,7 +342,7 @@ const ContainerEditor: React.FC<ContainerEditorProps> = ({
             <ProbesSection container={container} onUpdate={onUpdate} />
           )}
           {activeSection === 'mounts' && (
-            <MountsSection container={container} onUpdate={onUpdate} volumes={volumes} />
+            <MountsSection container={container} onUpdate={onUpdate} volumes={volumes} namespace={namespace} />
           )}
           {activeSection === 'security' && (
             <SecuritySection container={container} onUpdate={onUpdate} />
@@ -461,215 +467,271 @@ const BasicSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<C
 );
 
 // Environment Section
-const EnvironmentSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => (
-  <div className="space-y-4">
-    {/* Direct Env Vars */}
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-bold text-slate-500 uppercase">Environment Variables</label>
-        <button
-          onClick={() => onUpdate({ 
-            env: [...(container.env || []), { name: '', value: '' }] 
-          })}
-          className="text-xs text-blue-400 hover:text-blue-300"
-        >
-          <Plus size={12} className="inline mr-1" /> Add Variable
-        </button>
-      </div>
-      {(container.env || []).length === 0 ? (
-        <div className="text-xs text-slate-500 py-2">No environment variables defined</div>
-      ) : (
-        <div className="space-y-2">
-          {container.env?.map((env, i) => (
-            <div key={i} className="flex gap-2 items-start">
-              <input
-                type="text"
-                placeholder="Name"
-                value={env.name}
-                onChange={(e) => {
-                  const newEnv = [...(container.env || [])];
-                  newEnv[i] = { ...newEnv[i], name: e.target.value };
-                  onUpdate({ env: newEnv });
-                }}
-                className="w-1/3 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
-              />
-              {env.valueFrom ? (
-                <div className="flex-1 flex gap-2">
-                  <select
-                    value={env.valueFrom.configMapKeyRef ? 'configMap' : env.valueFrom.secretKeyRef ? 'secret' : 'fieldRef'}
-                    onChange={(e) => {
-                      const newEnv = [...(container.env || [])];
-                      const type = e.target.value;
-                      if (type === 'configMap') {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { name: '', key: '' } } };
-                      } else if (type === 'secret') {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { name: '', key: '' } } };
-                      } else {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { fieldRef: { fieldPath: '' } } };
-                      }
-                      onUpdate({ env: newEnv });
-                    }}
-                    className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                  >
-                    <option value="configMap">ConfigMap</option>
-                    <option value="secret">Secret</option>
-                    <option value="fieldRef">Field Ref</option>
-                  </select>
-                  <input
-                    type="text"
-                    placeholder="Ref Name"
-                    value={env.valueFrom.configMapKeyRef?.name || env.valueFrom.secretKeyRef?.name || env.valueFrom.fieldRef?.fieldPath || ''}
-                    onChange={(e) => {
-                      const newEnv = [...(container.env || [])];
-                      if (env.valueFrom?.configMapKeyRef) {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { ...env.valueFrom.configMapKeyRef, name: e.target.value } } };
-                      } else if (env.valueFrom?.secretKeyRef) {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { ...env.valueFrom.secretKeyRef, name: e.target.value } } };
-                      } else if (env.valueFrom?.fieldRef) {
-                        newEnv[i] = { ...newEnv[i], valueFrom: { fieldRef: { fieldPath: e.target.value } } };
-                      }
-                      onUpdate({ env: newEnv });
-                    }}
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                  />
-                  {(env.valueFrom.configMapKeyRef || env.valueFrom.secretKeyRef) && (
-                    <input
-                      type="text"
-                      placeholder="Key"
-                      value={env.valueFrom.configMapKeyRef?.key || env.valueFrom.secretKeyRef?.key || ''}
+const EnvironmentSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void; namespace: string }> = ({ container, onUpdate, namespace }) => {
+  const configMapNames = useConfigMapNames(namespace);
+  const secretNames = useSecretNames(namespace);
+  
+  return (
+    <div className="space-y-4">
+      {/* Direct Env Vars */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-bold text-slate-500 uppercase">Environment Variables</label>
+          <button
+            onClick={() => onUpdate({ 
+              env: [...(container.env || []), { name: '', value: '' }] 
+            })}
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            <Plus size={12} className="inline mr-1" /> Add Variable
+          </button>
+        </div>
+        {(container.env || []).length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">No environment variables defined</div>
+        ) : (
+          <div className="space-y-2">
+            {container.env?.map((env, i) => (
+              <div key={i} className="flex gap-2 items-start">
+                <input
+                  type="text"
+                  placeholder="Name"
+                  value={env.name}
+                  onChange={(e) => {
+                    const newEnv = [...(container.env || [])];
+                    newEnv[i] = { ...newEnv[i], name: e.target.value };
+                    onUpdate({ env: newEnv });
+                  }}
+                  className="w-1/4 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
+                />
+                {env.valueFrom ? (
+                  <div className="flex-1 flex gap-2 items-center">
+                    <select
+                      value={env.valueFrom.configMapKeyRef ? 'configMap' : env.valueFrom.secretKeyRef ? 'secret' : 'fieldRef'}
                       onChange={(e) => {
                         const newEnv = [...(container.env || [])];
-                        if (env.valueFrom?.configMapKeyRef) {
-                          newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { ...env.valueFrom.configMapKeyRef, key: e.target.value } } };
-                        } else if (env.valueFrom?.secretKeyRef) {
-                          newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { ...env.valueFrom.secretKeyRef, key: e.target.value } } };
+                        const type = e.target.value;
+                        if (type === 'configMap') {
+                          newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { name: '', key: '' } } };
+                        } else if (type === 'secret') {
+                          newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { name: '', key: '' } } };
+                        } else {
+                          newEnv[i] = { ...newEnv[i], valueFrom: { fieldRef: { fieldPath: '' } } };
                         }
                         onUpdate({ env: newEnv });
                       }}
-                      className="w-1/4 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                      className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                    >
+                      <option value="configMap">ConfigMap</option>
+                      <option value="secret">Secret</option>
+                      <option value="fieldRef">Field Ref</option>
+                    </select>
+                    {env.valueFrom.configMapKeyRef && (
+                      <>
+                        <div className="flex-1">
+                          <Combobox
+                            value={env.valueFrom.configMapKeyRef.name || ''}
+                            onChange={(v) => {
+                              const newEnv = [...(container.env || [])];
+                              newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { ...env.valueFrom!.configMapKeyRef!, name: v } } };
+                              onUpdate({ env: newEnv });
+                            }}
+                            options={configMapNames}
+                            placeholder="ConfigMap..."
+                            allowCustom={true}
+                            size="sm"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Key"
+                          value={env.valueFrom.configMapKeyRef.key || ''}
+                          onChange={(e) => {
+                            const newEnv = [...(container.env || [])];
+                            newEnv[i] = { ...newEnv[i], valueFrom: { configMapKeyRef: { ...env.valueFrom!.configMapKeyRef!, key: e.target.value } } };
+                            onUpdate({ env: newEnv });
+                          }}
+                          className="w-1/4 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                        />
+                      </>
+                    )}
+                    {env.valueFrom.secretKeyRef && (
+                      <>
+                        <div className="flex-1">
+                          <Combobox
+                            value={env.valueFrom.secretKeyRef.name || ''}
+                            onChange={(v) => {
+                              const newEnv = [...(container.env || [])];
+                              newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { ...env.valueFrom!.secretKeyRef!, name: v } } };
+                              onUpdate({ env: newEnv });
+                            }}
+                            options={secretNames}
+                            placeholder="Secret..."
+                            allowCustom={true}
+                            size="sm"
+                          />
+                        </div>
+                        <input
+                          type="text"
+                          placeholder="Key"
+                          value={env.valueFrom.secretKeyRef.key || ''}
+                          onChange={(e) => {
+                            const newEnv = [...(container.env || [])];
+                            newEnv[i] = { ...newEnv[i], valueFrom: { secretKeyRef: { ...env.valueFrom!.secretKeyRef!, key: e.target.value } } };
+                            onUpdate({ env: newEnv });
+                          }}
+                          className="w-1/4 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                        />
+                      </>
+                    )}
+                    {env.valueFrom.fieldRef && (
+                      <input
+                        type="text"
+                        placeholder="Field Path"
+                        value={env.valueFrom.fieldRef.fieldPath || ''}
+                        onChange={(e) => {
+                          const newEnv = [...(container.env || [])];
+                          newEnv[i] = { ...newEnv[i], valueFrom: { fieldRef: { fieldPath: e.target.value } } };
+                          onUpdate({ env: newEnv });
+                        }}
+                        className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    placeholder="Value"
+                    value={env.value || ''}
+                    onChange={(e) => {
+                      const newEnv = [...(container.env || [])];
+                      newEnv[i] = { ...newEnv[i], value: e.target.value };
+                      onUpdate({ env: newEnv });
+                    }}
+                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
+                  />
+                )}
+                <button
+                  onClick={() => {
+                    const newEnv = [...(container.env || [])];
+                    if (newEnv[i].valueFrom) {
+                      newEnv[i] = { name: newEnv[i].name, value: '' };
+                    } else {
+                      newEnv[i] = { name: newEnv[i].name, valueFrom: { configMapKeyRef: { name: '', key: '' } } };
+                    }
+                    onUpdate({ env: newEnv });
+                  }}
+                  className="text-slate-400 hover:text-slate-200 px-1"
+                  title="Toggle value type"
+                >
+                  <Zap size={14} />
+                </button>
+                <button
+                  onClick={() => {
+                    const newEnv = container.env?.filter((_, idx) => idx !== i);
+                    onUpdate({ env: newEnv?.length ? newEnv : undefined });
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* EnvFrom */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <label className="text-xs font-bold text-slate-500 uppercase">Env From (ConfigMaps/Secrets)</label>
+          <button
+            onClick={() => onUpdate({ 
+              envFrom: [...(container.envFrom || []), { configMapRef: { name: '' } }] 
+            })}
+            className="text-xs text-blue-400 hover:text-blue-300"
+          >
+            <Plus size={12} className="inline mr-1" /> Add Source
+          </button>
+        </div>
+        {(container.envFrom || []).length === 0 ? (
+          <div className="text-xs text-slate-500 py-2">No env sources defined</div>
+        ) : (
+          <div className="space-y-2">
+            {container.envFrom?.map((envFrom, i) => (
+              <div key={i} className="flex gap-2 items-center">
+                <select
+                  value={envFrom.configMapRef ? 'configMap' : 'secret'}
+                  onChange={(e) => {
+                    const newEnvFrom = [...(container.envFrom || [])];
+                    if (e.target.value === 'configMap') {
+                      newEnvFrom[i] = { configMapRef: { name: '' }, prefix: envFrom.prefix };
+                    } else {
+                      newEnvFrom[i] = { secretRef: { name: '' }, prefix: envFrom.prefix };
+                    }
+                    onUpdate({ envFrom: newEnvFrom });
+                  }}
+                  className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                >
+                  <option value="configMap">ConfigMap</option>
+                  <option value="secret">Secret</option>
+                </select>
+                <div className="flex-1">
+                  {envFrom.configMapRef ? (
+                    <Combobox
+                      value={envFrom.configMapRef.name || ''}
+                      onChange={(v) => {
+                        const newEnvFrom = [...(container.envFrom || [])];
+                        newEnvFrom[i] = { ...newEnvFrom[i], configMapRef: { name: v } };
+                        onUpdate({ envFrom: newEnvFrom });
+                      }}
+                      options={configMapNames}
+                      placeholder="Select ConfigMap..."
+                      allowCustom={true}
+                      size="sm"
+                    />
+                  ) : (
+                    <Combobox
+                      value={envFrom.secretRef?.name || ''}
+                      onChange={(v) => {
+                        const newEnvFrom = [...(container.envFrom || [])];
+                        newEnvFrom[i] = { ...newEnvFrom[i], secretRef: { name: v } };
+                        onUpdate({ envFrom: newEnvFrom });
+                      }}
+                      options={secretNames}
+                      placeholder="Select Secret..."
+                      allowCustom={true}
+                      size="sm"
                     />
                   )}
                 </div>
-              ) : (
                 <input
                   type="text"
-                  placeholder="Value"
-                  value={env.value || ''}
+                  placeholder="Prefix"
+                  value={envFrom.prefix || ''}
                   onChange={(e) => {
-                    const newEnv = [...(container.env || [])];
-                    newEnv[i] = { ...newEnv[i], value: e.target.value };
-                    onUpdate({ env: newEnv });
+                    const newEnvFrom = [...(container.envFrom || [])];
+                    newEnvFrom[i] = { ...newEnvFrom[i], prefix: e.target.value || undefined };
+                    onUpdate({ envFrom: newEnvFrom });
                   }}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
+                  className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
                 />
-              )}
-              <button
-                onClick={() => {
-                  const newEnv = [...(container.env || [])];
-                  if (newEnv[i].valueFrom) {
-                    newEnv[i] = { name: newEnv[i].name, value: '' };
-                  } else {
-                    newEnv[i] = { name: newEnv[i].name, valueFrom: { configMapKeyRef: { name: '', key: '' } } };
-                  }
-                  onUpdate({ env: newEnv });
-                }}
-                className="text-slate-400 hover:text-slate-200 px-1"
-                title="Toggle value type"
-              >
-                <Zap size={14} />
-              </button>
-              <button
-                onClick={() => {
-                  const newEnv = container.env?.filter((_, idx) => idx !== i);
-                  onUpdate({ env: newEnv?.length ? newEnv : undefined });
-                }}
-                className="text-red-400 hover:text-red-300"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-
-    {/* EnvFrom */}
-    <div>
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-xs font-bold text-slate-500 uppercase">Env From (ConfigMaps/Secrets)</label>
-        <button
-          onClick={() => onUpdate({ 
-            envFrom: [...(container.envFrom || []), { configMapRef: { name: '' } }] 
-          })}
-          className="text-xs text-blue-400 hover:text-blue-300"
-        >
-          <Plus size={12} className="inline mr-1" /> Add Source
-        </button>
+                <button
+                  onClick={() => {
+                    const newEnvFrom = container.envFrom?.filter((_, idx) => idx !== i);
+                    onUpdate({ envFrom: newEnvFrom?.length ? newEnvFrom : undefined });
+                  }}
+                  className="text-red-400 hover:text-red-300"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
-      {(container.envFrom || []).length === 0 ? (
-        <div className="text-xs text-slate-500 py-2">No env sources defined</div>
-      ) : (
-        <div className="space-y-2">
-          {container.envFrom?.map((envFrom, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <select
-                value={envFrom.configMapRef ? 'configMap' : 'secret'}
-                onChange={(e) => {
-                  const newEnvFrom = [...(container.envFrom || [])];
-                  if (e.target.value === 'configMap') {
-                    newEnvFrom[i] = { configMapRef: { name: '' }, prefix: envFrom.prefix };
-                  } else {
-                    newEnvFrom[i] = { secretRef: { name: '' }, prefix: envFrom.prefix };
-                  }
-                  onUpdate({ envFrom: newEnvFrom });
-                }}
-                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-              >
-                <option value="configMap">ConfigMap</option>
-                <option value="secret">Secret</option>
-              </select>
-              <input
-                type="text"
-                placeholder="Name"
-                value={envFrom.configMapRef?.name || envFrom.secretRef?.name || ''}
-                onChange={(e) => {
-                  const newEnvFrom = [...(container.envFrom || [])];
-                  if (envFrom.configMapRef) {
-                    newEnvFrom[i] = { ...newEnvFrom[i], configMapRef: { name: e.target.value } };
-                  } else {
-                    newEnvFrom[i] = { ...newEnvFrom[i], secretRef: { name: e.target.value } };
-                  }
-                  onUpdate({ envFrom: newEnvFrom });
-                }}
-                className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-              />
-              <input
-                type="text"
-                placeholder="Prefix"
-                value={envFrom.prefix || ''}
-                onChange={(e) => {
-                  const newEnvFrom = [...(container.envFrom || [])];
-                  newEnvFrom[i] = { ...newEnvFrom[i], prefix: e.target.value || undefined };
-                  onUpdate({ envFrom: newEnvFrom });
-                }}
-                className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-              />
-              <button
-                onClick={() => {
-                  const newEnvFrom = container.envFrom?.filter((_, idx) => idx !== i);
-                  onUpdate({ envFrom: newEnvFrom?.length ? newEnvFrom : undefined });
-                }}
-                className="text-red-400 hover:text-red-300"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
-  </div>
-);
+  );
+};
 
 // Resources Section
 const ResourcesSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => {
@@ -954,8 +1016,9 @@ const ProbeEditor: React.FC<{
 };
 
 // Mounts Section
-const MountsSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void; volumes: any[] }> = ({ container, onUpdate, volumes }) => {
+const MountsSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void; volumes: any[]; namespace: string }> = ({ container, onUpdate, volumes }) => {
   const mounts = container.volumeMounts || [];
+  const volumeNames = volumes.map((v: any) => v.name);
 
   return (
     <div className="space-y-4">
@@ -981,23 +1044,21 @@ const MountsSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<
         <div className="space-y-2">
           {mounts.map((mount, i) => (
             <div key={i} className="flex gap-2 items-center bg-slate-800/50 p-3 rounded-lg border border-slate-700">
-              <select
-                value={mount.name}
-                onChange={(e) => {
-                  const newMounts = [...mounts];
-                  newMounts[i] = { ...newMounts[i], name: e.target.value };
-                  onUpdate({ volumeMounts: newMounts });
-                }}
-                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-              >
-                {volumes.length === 0 ? (
-                  <option value="">No volumes available</option>
-                ) : (
-                  volumes.map((v: any) => (
-                    <option key={v.name} value={v.name}>{v.name}</option>
-                  ))
-                )}
-              </select>
+              <div className="w-40">
+                <Combobox
+                  value={mount.name}
+                  onChange={(v) => {
+                    const newMounts = [...mounts];
+                    newMounts[i] = { ...newMounts[i], name: v };
+                    onUpdate({ volumeMounts: newMounts });
+                  }}
+                  options={volumeNames}
+                  placeholder="Select volume..."
+                  allowCustom={true}
+                  size="sm"
+                  emptyMessage="No volumes defined"
+                />
+              </div>
               <input
                 type="text"
                 placeholder="Mount Path"

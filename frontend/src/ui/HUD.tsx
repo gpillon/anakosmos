@@ -207,7 +207,7 @@ export const HUD: React.FC = () => {
       <div className="pointer-events-auto flex flex-col gap-3 items-start">
         <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2 drop-shadow-md">
           <Layers className="text-blue-500" />
-          Kube3D
+          Anakosmos
           <button 
             className="p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-colors ml-1" 
             title="Toggle Performance Stats (Alt+I)"

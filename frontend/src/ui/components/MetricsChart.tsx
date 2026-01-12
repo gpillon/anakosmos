@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Cpu, HardDrive, Activity, AlertTriangle } from 'lucide-react';
-import { clsx } from 'clsx';
 
 interface MetricPoint {
   timestamp: number;
@@ -166,7 +165,7 @@ export const PodMetricsDisplay: React.FC<PodMetricsDisplayProps> = ({
       memory: { usage: number; formatted: string };
     }>;
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [_error, setError] = useState<string | null>(null);
 
   // Check if metrics-server is available
   useEffect(() => {

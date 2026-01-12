@@ -1,24 +1,24 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kube3d
+  name: anakosmos
   namespace: default
   labels:
-    app: kube3d
+    app: anakosmos
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: kube3d
+      app: anakosmos
   template:
     metadata:
       labels:
-        app: kube3d
+        app: anakosmos
     spec:
-      serviceAccountName: kube3d-sa
+      serviceAccountName: anakosmos-sa
       containers:
-      - name: kube3d
-        image: localhost/kube3d:latest
+      - name: anakosmos
+        image: localhost/anakosmos:latest
         imagePullPolicy: Never
         ports:
         - containerPort: 8080
@@ -26,11 +26,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kube3d
+  name: anakosmos
   namespace: default
 spec:
   selector:
-    app: kube3d
+    app: anakosmos
   ports:
     - protocol: TCP
       port: 80

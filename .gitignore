@@ -26,6 +26,7 @@ Thumbs.db
 *.swo
 
 # Backend (Go)
+backend/anakosmos-server
 backend/kube3d-server
 backend/tmp/
 backend/bin/

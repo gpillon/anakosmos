@@ -4,7 +4,7 @@ backend-setup:
 	cd backend && go mod tidy
 
 backend-build:
-	cd backend && go build -o kube3d-server main.go
+	cd backend && go build -o anakosmos-server main.go
 
 backend-run:
 	cd backend && go run main.go --port=8080

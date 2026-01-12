@@ -24,6 +24,8 @@ export const useForceLayout = (
   const positionsRef = useRef<Record<string, [number, number, number]>>({});
   // We need to trigger at least one render when positions first arrive so nodes appear
   const [hasPositions, setHasPositions] = useState(false);
+  // Track when worker is ready to trigger data send
+  const [isWorkerReady, setIsWorkerReady] = useState(false);
   
   const workerRef = useRef<Worker | null>(null);
   const lastSentHashRef = useRef<string>('');
@@ -38,25 +40,30 @@ export const useForceLayout = (
 
   useEffect(() => {
     // Initialize Worker
-    if (!workerRef.current) {
-        workerRef.current = new LayoutWorker();
-        
-        workerRef.current.onmessage = (e) => {
-            const { type, positions } = e.data;
-            if (type === 'tick') {
-                positionsRef.current = positions;
-                // Only trigger render on first valid positions to avoid loop loop re-renders
-                setHasPositions(prev => {
-                    if (!prev && Object.keys(positions).length > 0) return true;
-                    return prev;
-                });
-            }
-        };
-    }
+    workerRef.current = new LayoutWorker();
+    
+    workerRef.current.onmessage = (e) => {
+        const { type, positions } = e.data;
+        if (type === 'tick') {
+            positionsRef.current = positions;
+            // Only trigger render on first valid positions to avoid loop loop re-renders
+            setHasPositions(prev => {
+                if (!prev && Object.keys(positions).length > 0) return true;
+                return prev;
+            });
+        }
+    };
+    
+    // Signal that worker is ready
+    setIsWorkerReady(true);
 
     return () => {
         workerRef.current?.terminate();
         workerRef.current = null;
+        setIsWorkerReady(false);
+        setHasPositions(false);
+        lastSentHashRef.current = '';
+        positionsRef.current = {};
     };
   }, []);
 
@@ -109,9 +116,17 @@ export const useForceLayout = (
   }, [resources, links, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, enableNamespaceProjection, statusFilters]);
 
   useEffect(() => {
-    if (!workerRef.current) return;
+    // Wait for worker to be ready before sending data
+    if (!isWorkerReady || !workerRef.current) return;
     
     const { nodes, simLinks, namespaces, namespaceSizes, clusterScopedCount, dataHash } = layoutData;
+
+    // If there are no nodes to layout, set hasPositions immediately
+    // This handles empty clusters or when all resources are filtered out
+    if (nodes.length === 0) {
+      setHasPositions(true);
+      return;
+    }
 
     // Skip if data hasn't actually changed
     if (dataHash === lastSentHashRef.current) {
@@ -139,7 +154,7 @@ export const useForceLayout = (
         }
     });
 
-  }, [layoutData, enableNamespaceProjection]);
+  }, [layoutData, enableNamespaceProjection, isWorkerReady]);
 
   return { positionsRef, hasPositions };
 };
@@ -159,6 +174,12 @@ export function shouldShowResource(
   statusFilters?: Record<string, Record<string, string>>
 ): boolean {
   if (hiddenResourceKinds.includes(resource.kind)) return false;
+
+  // Filter out empty ReplicaSets (historic/inactive)
+  if (resource.kind === 'ReplicaSet') {
+    const specReplicas = resource.raw?.spec?.replicas;
+    if (specReplicas === 0) return false;
+  }
   
   // Status Filters
   if (statusFilters) {
