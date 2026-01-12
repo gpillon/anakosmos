@@ -1,0 +1,6 @@
+FROM alpine:latest
+WORKDIR /app
+COPY anakosmos-server .
+COPY dist ./frontend/dist
+EXPOSE 8080
+ENTRYPOINT ["./anakosmos-server"]

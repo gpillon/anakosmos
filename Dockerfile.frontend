@@ -1,0 +1,9 @@
+FROM node:24-alpine AS builder
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
+
+FROM scratch
+COPY --from=builder /app/frontend/dist /dist
