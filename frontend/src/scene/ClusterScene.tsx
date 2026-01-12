@@ -4,7 +4,8 @@ import { Grid, Environment, CameraControls, Instances, Instance, Html, Stars } f
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
-import { useClusterStore } from '../store/useClusterStore';
+import { useClusterStore, useDisplayResources } from '../store/useClusterStore';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useResourceDetailsStore } from '../store/useResourceDetailsStore';
 import { LinkLayer } from './LinkLayer';
@@ -116,7 +117,7 @@ const AnimatedInstance: React.FC<any> = ({ isUnhealthy, scale, id, positionsRef,
 const ResourceLabel: React.FC<{
   id: string;
   resources: Record<string, ClusterResource>;
-  positionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
+  positionsRef: React.RefObject<Record<string, [number, number, number]>>;
 }> = ({ id, resources, positionsRef }) => {
   const groupRef = useRef<THREE.Group>(null);
   const res = resources[id];
@@ -145,7 +146,7 @@ const ResourceLabel: React.FC<{
 
 const LabelsLayer: React.FC<{
   resources: Record<string, ClusterResource>;
-  positionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
+  positionsRef: React.RefObject<Record<string, [number, number, number]>>;
   selectedId: string | null;
   hoveredId: string | null;
   focusedKind: string | null;
@@ -203,7 +204,7 @@ const LabelsLayer: React.FC<{
 
 const InstancedNodes: React.FC<{
   resources: ClusterResource[];
-  positionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
+  positionsRef: React.RefObject<Record<string, [number, number, number]>>;
   geometry: THREE.BufferGeometry;
   baseColor: string;
   onClick: (id: string) => void;
@@ -311,8 +312,8 @@ const InstancedNodes: React.FC<{
 
 // Layout System to handle Interpolation
 const LayoutSystem: React.FC<{
-  targetPositionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
-  children: (interpolatedRef: React.MutableRefObject<Record<string, [number, number, number]>>) => React.ReactNode;
+  targetPositionsRef: React.RefObject<Record<string, [number, number, number]>>;
+  children: (interpolatedRef: React.RefObject<Record<string, [number, number, number]>>) => React.ReactNode;
 }> = ({ targetPositionsRef, children }) => {
   const interpolatedRef = useRef<Record<string, [number, number, number]>>({});
   
@@ -350,7 +351,11 @@ const LayoutSystem: React.FC<{
 };
 
 export const ClusterScene: React.FC = () => {
-  const { resources, links, setSceneReady } = useClusterStore();
+  const setSceneReady = useClusterStore(state => state.setSceneReady);
+  const isOnboardingActive = useOnboardingStore(state => state.isActive);
+  
+  // Get either demo or real resources based on onboarding state
+  const { resources, links } = useDisplayResources(isOnboardingActive);
   const selectedResourceId = useSettingsStore(state => state.selectedResourceId);
   const setSelectedResourceId = useSettingsStore(state => state.setSelectedResourceId);
   const focusedResourceKind = useSettingsStore(state => state.focusedResourceKind);
@@ -485,7 +490,7 @@ export const ClusterScene: React.FC = () => {
         </div>
       )}
 
-      <Canvas camera={{ position: [15, 15, 15], fov: 50, far: 5000 }} onPointerMissed={handleMiss}>
+      <Canvas camera={{ position: [30, 30, 30], fov: 50, far: 5000 }} onPointerMissed={handleMiss}>
         <color attach="background" args={['#050505']} />
         
         <Stars radius={100} depth={50} count={5000} factor={4} saturation={0} fade speed={1} />

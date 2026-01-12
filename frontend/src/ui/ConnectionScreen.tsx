@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useClusterStore } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { SavedConnection } from '../store/useSettingsStore';
@@ -7,6 +7,22 @@ import { Server, Database, AlertCircle, ArrowRight, Key, CheckCircle2, History, 
 export const ConnectionScreen: React.FC = () => {
   const { connect, checkConnection, connectionError, loadingProgress, loadingMessage } = useClusterStore();
   const { savedConnections, addSavedConnection, removeSavedConnection } = useSettingsStore();
+  
+  // Developer: URL param ?test=1 to simulate connection for testing onboarding
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('test') === '1') {
+      console.log('[Dev] Test mode: Simulating connection for onboarding');
+      // Directly set isConnected to true with empty resources
+      // The onboarding will then show demo resources
+      useClusterStore.setState({
+        isConnected: true,
+        resources: {},
+        links: [],
+        isSceneReady: true, // Set ready so onboarding can auto-start
+      });
+    }
+  }, []);
   
   const [customUrl, setCustomUrl] = useState('http://localhost:8080');
   const [token, setToken] = useState('');

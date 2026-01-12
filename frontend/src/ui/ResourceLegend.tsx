@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
-import { useClusterStore } from '../store/useClusterStore';
+import { useDisplayResources } from '../store/useClusterStore';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { StatusFilterState } from '../store/useSettingsStore';
 import { KIND_CONFIG, CATEGORY_CONFIG, KINDS_BY_CATEGORY, type ResourceCategory, type KindConfig } from '../config/resourceKinds';
@@ -24,7 +25,8 @@ import {
 import clsx from 'clsx';
 
 export const ResourceLegend: React.FC = () => {
-  const { resources } = useClusterStore();
+  const isOnboardingActive = useOnboardingStore(state => state.isActive);
+  const { resources } = useDisplayResources(isOnboardingActive);
   const { 
     hiddenResourceKinds, 
     toggleHiddenResourceKind, 

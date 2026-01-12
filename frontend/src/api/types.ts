@@ -8,6 +8,8 @@ export interface ClusterResource {
   labels: Record<string, string>;
   ownerRefs: string[]; // IDs of owners
   creationTimestamp: string;
+  // Pod-specific
+  nodeName?: string; // For Pods: which node they're scheduled on
   // Dynamic metrics or other props
   cpu?: string;
   memory?: string;

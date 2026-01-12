@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
-import { useClusterStore } from '../store/useClusterStore';
+import { useDisplayResources } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Layers, Activity, Search, Filter, X, EyeOff } from 'lucide-react';
+import { Layers, Activity, Search, Filter, X, EyeOff, HelpCircle } from 'lucide-react';
 import clsx from 'clsx';
 import { useThree, useFrame } from '@react-three/fiber';
 
@@ -27,6 +27,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 //
 // Let's define a tiny store for stats first.
 import { create } from 'zustand';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 
 interface StatsState {
     fps: number;
@@ -97,8 +98,13 @@ export const SceneStatsReporter: React.FC = () => {
     return null;
 };
 
-export const HUD: React.FC = () => {
-  const resources = useClusterStore(state => state.resources);
+interface HUDProps {
+  showFull?: boolean;
+}
+
+export const HUD: React.FC<HUDProps> = ({ showFull = true }) => {
+  const isOnboardingActive = useOnboardingStore(state => state.isActive);
+  const { resources } = useDisplayResources(isOnboardingActive);
   const { 
     searchQuery, 
     setSearchQuery, 
@@ -208,6 +214,7 @@ export const HUD: React.FC = () => {
         <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2 drop-shadow-md">
           <Layers className="text-blue-500" />
           Anakosmos
+          {showFull && (
           <button 
             className="p-1 rounded-full hover:bg-slate-800 text-slate-400 hover:text-blue-400 transition-colors ml-1" 
             title="Toggle Performance Stats (Alt+I)"
@@ -215,6 +222,7 @@ export const HUD: React.FC = () => {
           >
              <Activity size={16} /> 
           </button>
+          )}
         </h1>
         
         <div className="flex flex-wrap gap-2 text-sm text-slate-400 bg-slate-900/60 backdrop-blur px-3 py-1.5 rounded-full border border-slate-700/50 shadow-lg">
@@ -231,7 +239,8 @@ export const HUD: React.FC = () => {
         </div>
       </div>
 
-      {/* Center: Search & Filter */}
+      {/* Center: Search & Filter - only shown when showFull is true */}
+      {showFull ? (
       <div className="pointer-events-auto flex items-center gap-2 bg-slate-900/80 backdrop-blur border border-slate-700/50 p-1.5 rounded-full shadow-2xl mt-1">
         
         {/* Namespace Filter Dropdown */}
@@ -342,10 +351,43 @@ export const HUD: React.FC = () => {
           )}
         </div>
       </div>
+      ) : (
+        <div /> 
+      )}
 
-      {/* Right: Empty (for balance) */}
-      <div></div>
+      {/* Right: Tutorial Button */}
+      <div className="pointer-events-auto flex justify-end">
+        {showFull && (
+          <TutorialButton />
+        )}
+      </div>
     </div>
     </>
+  );
+};
+
+// Separate component for tutorial button
+const TutorialButton: React.FC = () => {
+  const { isActive, resetOnboarding, startOnboarding } = useOnboardingStore();
+  
+  const handleStartTutorial = () => {
+    // Clear localStorage to ensure clean state
+    localStorage.removeItem('anakosmos-onboarding');
+    resetOnboarding();
+    // Small delay to ensure state is updated before starting
+    setTimeout(() => startOnboarding(), 50);
+  };
+
+  if (isActive) return null; // Don't show when tutorial is already active
+
+  return (
+    <button
+      onClick={handleStartTutorial}
+      className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/80 hover:bg-slate-700 border border-slate-600/50 rounded-full text-sm text-slate-300 hover:text-white transition-all shadow-lg backdrop-blur"
+      title="Start Tutorial (Alt+O)"
+    >
+      <HelpCircle size={16} className="text-blue-400" />
+      <span className="hidden sm:inline">Tutorial</span>
+    </button>
   );
 };

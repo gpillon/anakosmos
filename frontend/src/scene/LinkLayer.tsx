@@ -1,7 +1,8 @@
 import React, { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame } from '@react-three/fiber';
-import { useClusterStore } from '../store/useClusterStore';
+import { useDisplayResources } from '../store/useClusterStore';
+import { useOnboardingStore } from '../store/useOnboardingStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldShowResource } from '../logic/LayoutEngine';
 import type { ClusterLink } from '../api/types';
@@ -11,7 +12,8 @@ interface LinkLayerProps {
 }
 
 export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
-  const { resources, links } = useClusterStore();
+  const isOnboardingActive = useOnboardingStore(state => state.isActive);
+  const { resources, links } = useDisplayResources(isOnboardingActive);
   const hiddenLinkTypes = useSettingsStore(state => state.hiddenLinkTypes);
   const hiddenResourceKinds = useSettingsStore(state => state.hiddenResourceKinds);
   const statusFilters = useSettingsStore(state => state.statusFilters);
