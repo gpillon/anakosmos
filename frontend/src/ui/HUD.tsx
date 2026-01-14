@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useDisplayResources } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Layers, Activity, Search, Filter, X, EyeOff, HelpCircle } from 'lucide-react';
+import { Layers, Activity, Search, Filter, X, EyeOff, HelpCircle, GitBranch, Package } from 'lucide-react';
 import clsx from 'clsx';
 import { useThree, useFrame } from '@react-three/fiber';
 
@@ -152,6 +152,8 @@ export const HUD: React.FC<HUDProps> = ({ showFull = true }) => {
   const resourceCount = filteredResources.length;
   const nodeCount = filteredResources.filter(r => r.kind === 'Node').length;
   const podCount = filteredResources.filter(r => r.kind === 'Pod').length;
+  const argoAppCount = filteredResources.filter(r => r.kind === 'Application').length;
+  const helmManagedCount = filteredResources.filter(r => r.helmRelease).length;
 
   // ... (existing namespaces logic) ...
   const namespaces = useMemo(() => {
@@ -236,6 +238,23 @@ export const HUD: React.FC<HUDProps> = ({ showFull = true }) => {
           <span>{podCount} Pods</span>
           <span className="w-px h-4 bg-slate-700 mx-1 self-center" />
           <span>{resourceCount} Objects</span>
+          {(argoAppCount > 0 || helmManagedCount > 0) && (
+            <>
+              <span className="w-px h-4 bg-slate-700 mx-1 self-center" />
+              {argoAppCount > 0 && (
+                <span className="flex items-center gap-1.5 text-orange-400" title="ArgoCD Applications">
+                  <GitBranch size={12} />
+                  {argoAppCount}
+                </span>
+              )}
+              {helmManagedCount > 0 && (
+                <span className="flex items-center gap-1.5 text-blue-400" title="Helm-managed resources">
+                  <Package size={12} />
+                  {helmManagedCount}
+                </span>
+              )}
+            </>
+          )}
         </div>
       </div>
 

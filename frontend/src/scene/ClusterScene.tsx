@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState, useMemo } from 'react';
+import React, { useEffect, useRef, useState, useMemo, useCallback, useLayoutEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Grid, Environment, CameraControls, Instances, Instance, Html, Stars } from '@react-three/drei';
+import { Grid, Environment, CameraControls, Html, Stars } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -13,12 +13,13 @@ import { NamespaceProjections } from './NamespaceProjections';
 import { useForceLayout, shouldShowResource } from '../logic/LayoutEngine';
 import type { ClusterResource } from '../api/types';
 import { SceneStatsReporter } from '../ui/HUD';
+import { AnimatedInstancedMaterial } from './AnimatedInstancedMaterial';
 import { 
   nodeGeo, podGeo, serviceGeo, deployGeo, 
   statefulGeo, daemonGeo, replicaGeo,
   octGeo, diamondGeo, smallBoxGeo, pyramidGeo,
   puckGeo, barrelGeo, slabGeo, torusKnotGeo, hexPrismGeo, tetraGeo,
-  jobGeo, cronJobGeo, hpaGeo 
+  jobGeo, cronJobGeo, hpaGeo, argoAppGeo, helmReleaseGeo 
 } from './sharedResources';
 import { KIND_COLOR_MAP, KIND_GEOMETRY_MAP, DEFAULT_COLOR, DEFAULT_GEOMETRY } from '../config/resourceKinds';
 import type { GeometryType } from '../config/resourceKinds';
@@ -49,26 +50,46 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
 
   useEffect(() => {
     if (!controlsRef.current) return;
-    if (selectedPos) {
-      if (!lastPos) {
-        setLastPos(controlsRef.current.getPosition(new THREE.Vector3()));
-        setLastTarget(controlsRef.current.getTarget(new THREE.Vector3()));
+      // Helper to normalize azimuth angle to be within [0, 2PI]
+      // This prevents the camera from "unwinding" large accumulated rotations
+      const normalizeRotation = () => {
+          const azimuth = controlsRef.current!.azimuthAngle;
+          const normalizedAzimuth = ((azimuth % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+          // Only reset if significantly different to avoid jitter (e.g. > 1 degree off)
+          if (Math.abs(azimuth - normalizedAzimuth) > 0.01) {
+              const polar = controlsRef.current!.polarAngle;
+              // Snap immediately without transition
+              controlsRef.current!.rotateTo(normalizedAzimuth, polar, false);
+          }
+      };
+
+      if (selectedPos) {
+        if (!lastPos) {
+          setLastPos(controlsRef.current.getPosition(new THREE.Vector3()));
+          setLastTarget(controlsRef.current.getTarget(new THREE.Vector3()));
+        }
+        const [x, y, z] = selectedPos;
+
+        // Normalize rotation before starting the transition
+        normalizeRotation();
+
+        controlsRef.current.setLookAt(
+          x + 8, Math.max(y + 8, 10), z + 8,
+          x, y, z,
+          true
+        );
+      } else if (lastPos && lastTarget) {
+        // Normalize rotation before starting the transition
+        normalizeRotation();
+
+        controlsRef.current.setLookAt(
+          lastPos.x, lastPos.y, lastPos.z,
+          lastTarget.x, lastTarget.y, lastTarget.z,
+          true
+        );
+        setLastPos(null);
+        setLastTarget(null);
       }
-      const [x, y, z] = selectedPos;
-      controlsRef.current.setLookAt(
-        x + 8, Math.max(y + 8, 10), z + 8,
-        x, y, z,
-        true
-      );
-    } else if (lastPos && lastTarget) {
-      controlsRef.current.setLookAt(
-        lastPos.x, lastPos.y, lastPos.z,
-        lastTarget.x, lastTarget.y, lastTarget.z,
-        true
-      );
-      setLastPos(null);
-      setLastTarget(null);
-    }
   }, [selectedPos]);
 
   return <CameraControls 
@@ -82,36 +103,7 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
   />;
 };
 
-// Optimized Instanced Node Component
-const AnimatedInstance: React.FC<any> = ({ isUnhealthy, scale, id, positionsRef, kind, onDoubleClick, ...props }) => {
-  const ref = useRef<any>(null);
-  
-  useFrame((state) => {
-    if (ref.current && positionsRef.current[id]) {
-      const pos = positionsRef.current[id];
-      // Update position directly from ref, bypassing React render cycle
-      ref.current.position.set(pos[0], pos[1] + (kind === 'Node' ? 0.2 : 0), pos[2]);
-      
-      if (isUnhealthy) {
-        const t = state.clock.getElapsedTime();
-        const factor = 1 + (Math.sin(t * 8) * 0.15); 
-        ref.current.scale.setScalar(scale * factor);
-      }
-    }
-  });
-
-  return (
-    <Instance 
-        ref={ref} 
-        scale={scale} 
-        onDoubleClick={(e: any) => {
-            e.stopPropagation();
-            if (onDoubleClick) onDoubleClick(id);
-        }}
-        {...props} 
-    />
-  );
-};
+// GPU-accelerated instanced nodes - no per-instance useFrame needed!
 
 // Label Component using Html overlay
 const ResourceLabel: React.FC<{
@@ -122,8 +114,16 @@ const ResourceLabel: React.FC<{
   const groupRef = useRef<THREE.Group>(null);
   const res = resources[id];
 
+  // Fix Glitch: Set initial position immediately before paint
+  useLayoutEffect(() => {
+    if (groupRef.current && positionsRef.current && positionsRef.current[id]) {
+        const [x, y, z] = positionsRef.current[id];
+        groupRef.current.position.set(x, y + 2.0, z);
+    }
+  }, [id, positionsRef]);
+
   useFrame(() => {
-    if (groupRef.current && positionsRef.current[id]) {
+    if (groupRef.current && positionsRef.current && positionsRef.current[id]) {
         const [x, y, z] = positionsRef.current[id];
         // Height offset depends on kind, but +2.5 is a safe default for now
         groupRef.current.position.set(x, y + 2.0, z);
@@ -158,10 +158,12 @@ const LabelsLayer: React.FC<{
   hiddenResourceKinds: string[];
   links: any[]; // Avoid circular dependency with ClusterLink if possible, or import it
 }> = ({ resources, positionsRef, selectedId, hoveredId, focusedKind, statusFilters, searchQuery, filterNamespaces, hideSystemNamespaces, activePreset, hiddenResourceKinds, links }) => {
-    const ids = useMemo(() => {
+    
+    // Optimize: Separate static filters (expensive) from interactive selection (cheap/frequent)
+    // This prevents re-scanning all resources on every mouse hover
+    
+    const staticIds = useMemo(() => {
         const set = new Set<string>();
-        if (selectedId) set.add(selectedId);
-        if (hoveredId) set.add(hoveredId);
         
         // Add all resources if their kind is focused (but respect global filters!)
         if (focusedKind) {
@@ -184,9 +186,15 @@ const LabelsLayer: React.FC<{
                 }
             });
         });
+        return set;
+    }, [focusedKind, statusFilters, resources, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links]);
 
+    const ids = useMemo(() => {
+        const set = new Set(staticIds);
+        if (selectedId) set.add(selectedId);
+        if (hoveredId) set.add(hoveredId);
         return Array.from(set);
-    }, [selectedId, hoveredId, focusedKind, statusFilters, resources, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links]);
+    }, [staticIds, selectedId, hoveredId]);
 
     return (
         <>
@@ -217,96 +225,165 @@ const InstancedNodes: React.FC<{
   setHoveredId: (id: string | null) => void;
 }> = ({ resources, positionsRef, geometry, baseColor, onClick, onDoubleClick, selectedId, connectedIds, focusedKind, statusFilters, hoveredId, setHoveredId }) => {
   const meshRef = useRef<THREE.InstancedMesh>(null);
+  const tempMatrix = useRef(new THREE.Matrix4());
+  const tempColor = useRef(new THREE.Color());
+  
+  // Store refs for stable access in useFrame
+  const resourcesRef = useRef(resources);
+  resourcesRef.current = resources;
+  
+  // Stable refs for attribute arrays - only resize when count changes
+  const unhealthyArrayRef = useRef<Float32Array | null>(null);
+  const colorArrayRef = useRef<Float32Array | null>(null);
+  const prevCountRef = useRef(0);
+  
+  // Max instance count with headroom to avoid frequent recreations
+  const maxCount = useMemo(() => Math.max(resources.length + 50, 100), [resources.length > prevCountRef.current ? resources.length : prevCountRef.current]);
 
-  // Update bounding sphere less frequently or in useFrame if needed.
-  // For 500 objects, we can just set a large fixed bounding sphere to avoid culling issues 
-  // or update it periodically.
-  // Here we'll rely on a one-time calculation when resources change, using the current positions (if any).
-  // Or simpler: disable frustum culling for these instances if they move a lot within the view.
+  // Setup attributes when mesh is available or count changes significantly
   useEffect(() => {
-    if (meshRef.current) {
-        meshRef.current.frustumCulled = false; // Simple fix for moving objects
+    const mesh = meshRef.current;
+    if (!mesh) return;
+
+    // CRITICAL PERFORMANCE FIX:
+    // 1. We override the MESH boundingSphere to Infinity so the Raycaster always checks this InstancedMesh
+    //    regardless of where the objects are (fixes selection issues).
+    // 2. We leave geometry.boundingSphere UNTOUCHED (small). This allows the Raycaster to efficiently 
+    //    cull individual instances that are not hit by the ray.
+    // Setting geometry.boundingSphere to Infinity caused the Raycaster to check triangles of ALL instances, killing FPS.
+    mesh.boundingSphere = new THREE.Sphere(new THREE.Vector3(), Infinity);
+    
+    const count = maxCount;
+    
+    // Only recreate if we need more capacity
+    if (!unhealthyArrayRef.current || unhealthyArrayRef.current.length < count) {
+      unhealthyArrayRef.current = new Float32Array(count);
+      colorArrayRef.current = new Float32Array(count * 3);
+      
+      // Setup attributes on geometry
+      const geo = mesh.geometry;
+      
+      // Remove old attributes if they exist
+      if (geo.hasAttribute('isUnhealthy')) geo.deleteAttribute('isUnhealthy');
+      if (geo.hasAttribute('instanceColor')) geo.deleteAttribute('instanceColor');
+      
+      // Add new attributes
+      const unhealthyAttr = new THREE.InstancedBufferAttribute(unhealthyArrayRef.current, 1);
+      const colorAttr = new THREE.InstancedBufferAttribute(colorArrayRef.current, 3);
+      unhealthyAttr.setUsage(THREE.DynamicDrawUsage);
+      colorAttr.setUsage(THREE.DynamicDrawUsage);
+      
+      geo.setAttribute('isUnhealthy', unhealthyAttr);
+      geo.setAttribute('instanceColor', colorAttr);
+    }
+    
+    prevCountRef.current = resources.length;
+  }, [maxCount, resources.length]);
+
+  // Update colors, unhealthy flags, and matrices in useFrame
+  useFrame(() => {
+    const mesh = meshRef.current;
+    if (!mesh || !unhealthyArrayRef.current || !colorArrayRef.current) return;
+    
+    const currentResources = resourcesRef.current;
+    const unhealthyArray = unhealthyArrayRef.current;
+    const colorArray = colorArrayRef.current;
+    
+    // Update instance count
+    mesh.count = currentResources.length;
+    
+    currentResources.forEach((res, idx) => {
+      const pos = positionsRef.current?.[res.id];
+      if (!pos) {
+        tempMatrix.current.makeScale(0, 0, 0);
+        mesh.setMatrixAt(idx, tempMatrix.current);
+        unhealthyArray[idx] = 0;
+        return;
+      }
+      
+      const isSelected = selectedId === res.id;
+      const isHovered = hoveredId === res.id;
+      const isFocused = focusedKind === res.kind;
+      const isDimmed = selectedId !== null && !connectedIds.has(res.id) && !isSelected;
+      
+      const isUnhealthy = res.health === 'warning' || res.health === 'error';
+      const isLegacyUnhealthy = !['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded', 'Complete', 'Suspended'].includes(res.status);
+      const finalIsUnhealthy = res.health ? isUnhealthy : isLegacyUnhealthy;
+      
+      const statusFilter = statusFilters[res.kind]?.[res.status] || 'default';
+      const isGrayed = statusFilter === 'grayed';
+      const isFocusedStatus = statusFilter === 'focused';
+
+      let color = baseColor;
+      let scale = 1;
+
+      if (isSelected) {
+          color = '#f472b6';
+      } else if (isFocused || isFocusedStatus) {
+          color = '#fbbf24';
+      } else if (finalIsUnhealthy) {
+          color = '#ef4444';
+      } else if (isHovered) {
+          color = '#ffffff';
+      } else if (isGrayed) {
+          color = '#333333';
+      }
+
+      if (isDimmed) {
+          color = '#333333';
+      }
+      
+      if (isHovered || isSelected || isFocused || isFocusedStatus || finalIsUnhealthy) {
+          scale = 1.2;
+      }
+      
+      // Update unhealthy flag for blinking shader
+      unhealthyArray[idx] = finalIsUnhealthy ? 1.0 : 0.0;
+      
+      // Update color array
+      tempColor.current.set(color);
+      colorArray[idx * 3] = tempColor.current.r;
+      colorArray[idx * 3 + 1] = tempColor.current.g;
+      colorArray[idx * 3 + 2] = tempColor.current.b;
+      
+      // Update matrix
+      const yOffset = res.kind === 'Node' ? 0.2 : 0;
+      tempMatrix.current.makeScale(scale, scale, scale);
+      tempMatrix.current.setPosition(pos[0], pos[1] + yOffset, pos[2]);
+      mesh.setMatrixAt(idx, tempMatrix.current);
+    });
+    
+    // Mark attributes as needing update
+    mesh.instanceMatrix.needsUpdate = true;
+    const geo = mesh.geometry;
+    if (geo.attributes.isUnhealthy) (geo.attributes.isUnhealthy as THREE.BufferAttribute).needsUpdate = true;
+    if (geo.attributes.instanceColor) (geo.attributes.instanceColor as THREE.BufferAttribute).needsUpdate = true;
+  });
+
+  // Handle pointer events - use resourcesRef for stable reference
+  const handlePointerEvent = useCallback((event: any, handler: (id: string) => void) => {
+    event.stopPropagation();
+    if (event.instanceId !== undefined && event.instanceId < resourcesRef.current.length) {
+      const res = resourcesRef.current[event.instanceId];
+      if (res) handler(res.id);
     }
   }, []);
 
+  // Don't render if no resources
+  if (resources.length === 0) return null;
+
   return (
-    <Instances ref={meshRef} range={resources.length} geometry={geometry}>
-      <meshPhysicalMaterial 
-          metalness={0.5}
-          roughness={0.3}
-          clearcoat={0.8}
-          transparent
-          flatShading={true}
-      />
-      {resources.map((res) => {
-        // We render the component ONCE (unless selection/resources change)
-        // Position is handled by AnimatedInstance internally.
-        
-        const isSelected = selectedId === res.id;
-        const isHovered = hoveredId === res.id;
-        const isFocused = focusedKind === res.kind;
-        const isConnected = connectedIds.has(res.id);
-        const isDimmed = selectedId !== null && !isConnected && !isSelected;
-        
-        // Status Check
-        const isUnhealthy = res.health === 'warning' || res.health === 'error';
-        // Added 'Complete' for Jobs, 'Suspended' for CronJobs (not unhealthy, just paused)
-        const isLegacyUnhealthy = !['Running', 'Ready', 'Active', 'Available', 'Bound', 'Succeeded', 'Complete', 'Suspended'].includes(res.status);
-        const finalIsUnhealthy = res.health ? isUnhealthy : isLegacyUnhealthy;
-        
-        const statusFilter = statusFilters[res.kind]?.[res.status] || 'default';
-        const isGrayed = statusFilter === 'grayed';
-        const isFocusedStatus = statusFilter === 'focused';
-
-        let color = baseColor;
-        let scale = 1;
-
-        if (isSelected) {
-            color = '#f472b6';
-        } else if (isFocused || isFocusedStatus) {
-            color = '#fbbf24';
-        } else if (finalIsUnhealthy) {
-            color = '#ef4444';
-        } else if (isHovered) {
-            color = '#ffffff';
-        } else if (isGrayed) {
-            color = '#333333'; // Dimmed for grayed status
-        }
-
-        if (isDimmed) {
-            color = '#333333';
-        }
-        
-        // Ensure grayed wins over dimmed if strictly grayed, but dimmed usually wins if not selected.
-        // Actually if isGrayed is true, we want it dark regardless of other non-selected states.
-        
-        if (isHovered || isSelected || isFocused || isFocusedStatus || finalIsUnhealthy) {
-            scale = 1.2;
-        }
-
-        return (
-            <AnimatedInstance
-                key={res.id}
-                id={res.id}
-                kind={res.kind}
-                positionsRef={positionsRef}
-                isUnhealthy={finalIsUnhealthy}
-                scale={scale}
-                color={color}
-                onClick={(e: any) => {
-                    e.stopPropagation();
-                    onClick(res.id);
-                }}
-                onDoubleClick={onDoubleClick}
-                onPointerOver={(e: any) => {
-                    e.stopPropagation();
-                    setHoveredId(res.id);
-                }}
-                onPointerOut={() => setHoveredId(null)}
-            />
-        );
-      })}
-    </Instances>
+    <instancedMesh 
+      ref={meshRef}
+      args={[geometry, undefined, maxCount]}
+      frustumCulled={false}
+      onClick={(e) => handlePointerEvent(e, onClick)}
+      onDoubleClick={(e) => handlePointerEvent(e, onDoubleClick)}
+      onPointerOver={(e) => handlePointerEvent(e, setHoveredId)}
+      onPointerOut={() => setHoveredId(null)}
+    >
+      <AnimatedInstancedMaterial />
+    </instancedMesh>
   );
 };
 
@@ -381,12 +458,17 @@ export const ClusterScene: React.FC = () => {
       return filtered;
   }, [resources, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters]);
 
-  // Group resources by kind for instancing
+  // Group resources by kind for instancing - SORT BY ID for stable instanceId mapping
   const resourcesByKind = useMemo(() => {
       const groups: Record<string, ClusterResource[]> = {};
       Object.values(visibleResources).forEach(r => {
           if (!groups[r.kind]) groups[r.kind] = [];
           groups[r.kind].push(r);
+      });
+      // Sort each group by id to ensure stable ordering
+      // This is critical for instanceId to match the correct resource on click
+      Object.keys(groups).forEach(kind => {
+          groups[kind].sort((a, b) => a.id.localeCompare(b.id));
       });
       return groups;
   }, [visibleResources]);
@@ -444,6 +526,8 @@ export const ClusterScene: React.FC = () => {
     job: jobGeo,             // flat box
     cronJob: cronJobGeo,     // rotated flat box
     hpa: hpaGeo,             // thin ring
+    argoApp: argoAppGeo,     // ArgoCD Application
+    helmRelease: helmReleaseGeo, // Helm Release
   };
 
   const getGeometryForKind = (kind: string) => {
@@ -526,7 +610,10 @@ export const ClusterScene: React.FC = () => {
 
                     {Object.entries(resourcesByKind).map(([kind, kindResources]) => (
                         <InstancedNodes 
-                            key={kind}
+                            // Only remount when the count changes. This fixes selection issues when
+                            // filtering drastically changes the number of instances, while keeping
+                            // performance high for state updates (colors/health) that don't change count.
+                            key={`${kind}-${kindResources.length}`}
                             resources={kindResources}
                             positionsRef={interpolatedRef}
                             geometry={getGeometryForKind(kind)}

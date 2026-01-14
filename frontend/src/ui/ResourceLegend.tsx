@@ -44,7 +44,7 @@ export const ResourceLegend: React.FC = () => {
   const [search, setSearch] = useState('');
   const [expandedKind, setExpandedKind] = useState<string | null>(null);
   const [expandedCategories, setExpandedCategories] = useState<Set<ResourceCategory>>(
-    new Set(['workload', 'network', 'config', 'storage'])
+    new Set(['workload', 'network', 'config', 'storage', 'gitops'])
   );
 
   // Filter config based on search
@@ -61,6 +61,7 @@ export const ResourceLegend: React.FC = () => {
       config: [],
       storage: [],
       rbac: [],
+      gitops: [],
       other: []
     };
     filteredBySearch.forEach(item => {
@@ -81,7 +82,7 @@ export const ResourceLegend: React.FC = () => {
   // Count resources by category
   const categoryCounts = useMemo(() => {
     const counts: Record<ResourceCategory, number> = {
-      workload: 0, network: 0, config: 0, storage: 0, rbac: 0, other: 0
+      workload: 0, network: 0, config: 0, storage: 0, rbac: 0, gitops: 0, other: 0
     };
     Object.values(KINDS_BY_CATEGORY).forEach((kinds) => {
       kinds.forEach(k => {
@@ -466,6 +467,7 @@ export const ResourceLegend: React.FC = () => {
                   {renderCategorySection('network')}
                   {renderCategorySection('config')}
                   {renderCategorySection('storage')}
+                  {renderCategorySection('gitops')}
                   {renderCategorySection('rbac')}
                   {renderCategorySection('other')}
                 </>

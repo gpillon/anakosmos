@@ -11,6 +11,8 @@ import { SecretView, secretTabs } from './resources/secret/SecretView';
 import { JobView, jobTabs } from './resources/job/JobView';
 import { CronJobView, cronJobTabs } from './resources/cronjob/CronJobView';
 import { HPAView, hpaTabs } from './resources/hpa/HPAView';
+import { ApplicationView, applicationTabs } from './resources/application/ApplicationView';
+import { HelmReleaseView, helmReleaseTabs } from './resources/helmrelease/HelmReleaseView';
 import { GenericView, genericTabs } from './resources/generic/GenericView';
 import type { ClusterResource } from '../api/types';
 import { useClusterStore } from '../store/useClusterStore';
@@ -89,6 +91,8 @@ export const ResourceDetailsWindow: React.FC = () => {
     'Job': { view: JobView, tabs: jobTabs },
     'CronJob': { view: CronJobView, tabs: cronJobTabs },
     'HorizontalPodAutoscaler': { view: HPAView, tabs: hpaTabs },
+    'Application': { view: ApplicationView, tabs: applicationTabs },
+    'HelmRelease': { view: HelmReleaseView, tabs: helmReleaseTabs },
   };
 
   if (viewMap[resource.kind]) {

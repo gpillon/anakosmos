@@ -17,6 +17,8 @@ import {
   Clock,
   Activity,
   Shield,
+  GitBranch,
+  Package,
 } from 'lucide-react';
 
 // Geometry types available in sharedResources.ts - ALL UNIQUE
@@ -40,10 +42,12 @@ export type GeometryType =
   | 'tetra'      // tetrahedron (fallback)
   | 'job'        // flat box (Job)
   | 'cronJob'    // rotated flat box (CronJob)
-  | 'hpa';       // thin ring (HPA)
+  | 'hpa'        // thin ring (HPA)
+  | 'argoApp'    // ArgoCD Application - compass-like shape
+  | 'helmRelease'; // Helm Release - package/box shape
 
 // Resource categories for legend organization
-export type ResourceCategory = 'workload' | 'network' | 'config' | 'storage' | 'rbac' | 'other';
+export type ResourceCategory = 'workload' | 'network' | 'config' | 'storage' | 'rbac' | 'gitops' | 'other';
 
 export const CATEGORY_CONFIG: { id: ResourceCategory; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
   { id: 'workload', label: 'Workloads', icon: Layers },
@@ -51,6 +55,7 @@ export const CATEGORY_CONFIG: { id: ResourceCategory; label: string; icon: React
   { id: 'config', label: 'Config', icon: FileJson },
   { id: 'storage', label: 'Storage', icon: HardDrive },
   { id: 'rbac', label: 'RBAC', icon: Shield },
+  { id: 'gitops', label: 'GitOps', icon: GitBranch },
   { id: 'other', label: 'Other', icon: Server },
 ];
 
@@ -85,8 +90,8 @@ export const KIND_CONFIG: KindConfig[] = [
   { kind: 'NodeNetworkConfigurationPolicy', label: 'Node Net Configs', icon: Settings, color: '#94a3b8', geometry: 'hexPrism', category: 'network' },
   
   // Config
-  { kind: 'ConfigMap', label: 'ConfigMaps', icon: FileJson, color: '#fbbf24', geometry: 'smallBox', category: 'config' },
-  { kind: 'Secret', label: 'Secrets', icon: Lock, color: '#f87171', geometry: 'pyramid', category: 'config' },
+  { kind: 'ConfigMap', label: 'ConfigMaps', icon: FileJson, color: '#6f007c', geometry: 'smallBox', category: 'config' },
+  { kind: 'Secret', label: 'Secrets', icon: Lock, color: '#b8a300', geometry: 'pyramid', category: 'config' },
   
   // Storage
   { kind: 'PersistentVolumeClaim', label: 'PVCs', icon: Disc, color: '#f97316', geometry: 'puck', category: 'storage' },
@@ -99,6 +104,10 @@ export const KIND_CONFIG: KindConfig[] = [
   // { kind: 'ClusterRole', label: 'ClusterRoles', icon: Shield, color: '#...', geometry: '...', category: 'rbac' },
   // { kind: 'RoleBinding', label: 'RoleBindings', icon: Link, color: '#...', geometry: '...', category: 'rbac' },
   // { kind: 'ClusterRoleBinding', label: 'ClusterRoleBindings', icon: Link, color: '#...', geometry: '...', category: 'rbac' },
+  
+  // GitOps
+  { kind: 'Application', label: 'Argo Applications', icon: GitBranch, color: '#ef6c00', geometry: 'argoApp', category: 'gitops' },
+  { kind: 'HelmRelease', label: 'Helm Releases', icon: Package, color: '#0ea5e9', geometry: 'helmRelease', category: 'gitops' },
 ];
 
 export const ALL_KINDS = KIND_CONFIG.map(k => k.kind);

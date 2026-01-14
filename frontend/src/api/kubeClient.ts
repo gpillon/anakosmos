@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { ClusterResource, ClusterLink } from './types';
+import type { ClusterResource, ClusterLink, HelmReleaseInfo, ArgoAppInfo, HelmRelease, HelmHistoryEntry, ClusterInitResponse, LightResource } from './types';
+import type { ArgoApplication } from './k8s-types';
+import yaml from 'js-yaml';
 
 export class ApiError extends Error {
   public status: number;
@@ -68,7 +70,7 @@ export class KubeClient {
   async getClusterResources(onProgress?: (progress: number, message: string) => void): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
     if (this.mode === 'proxy' || this.mode === 'custom') {
       try {
-        return await this.fetchFromApi(onProgress);
+        return await this.fetchClusterInit(onProgress);
       } catch (e) {
         console.error('API fetch failed:', e);
         throw new Error('Failed to reach server');
@@ -78,92 +80,76 @@ export class KubeClient {
     throw new Error('Unknown mode');
   }
 
-  private async fetchFromApi(onProgress?: (progress: number, message: string) => void): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
-    try {
-      // Helper to fetch list safely (return empty list on failure instead of throwing)
-      const fetchList = async (resource: string, group: string) => {
-          try {
-              return await this.fetchK8sList(resource, group);
-          } catch (e) {
-              console.warn(`Failed to fetch ${resource}:`, e);
-              return { items: [] };
-          }
-      };
+  /**
+   * Fetch cluster resources from the optimized /api/cluster/init endpoint
+   * This returns lightweight resources with pre-calculated links in a single request
+   */
+  private async fetchClusterInit(onProgress?: (progress: number, message: string) => void): Promise<{ resources: Record<string, ClusterResource>, links: ClusterLink[] }> {
+    if (onProgress) onProgress(10, 'Connecting to cluster...');
 
-      const resourcesToFetch = [
-        { key: 'nodes', group: 'v1' },
-        { key: 'pods', group: 'v1' },
-        { key: 'services', group: 'v1' },
-        { key: 'deployments', group: 'apps/v1' },
-        { key: 'statefulsets', group: 'apps/v1' },
-        { key: 'daemonsets', group: 'apps/v1' },
-        { key: 'replicasets', group: 'apps/v1' },
-        { key: 'ingresses', group: 'networking.k8s.io/v1' },
-        { key: 'pvcs', group: 'v1', resourceName: 'persistentvolumeclaims' },
-        { key: 'configmaps', group: 'v1' },
-        { key: 'secrets', group: 'v1' },
-        { key: 'storageclasses', group: 'storage.k8s.io/v1' },
-        { key: 'jobs', group: 'batch/v1' },
-        { key: 'cronjobs', group: 'batch/v1' },
-        { key: 'hpas', group: 'autoscaling/v2', resourceName: 'horizontalpodautoscalers' }
-      ];
-
-      const total = resourcesToFetch.length;
-      let completed = 0;
-
-      const results = await Promise.all(resourcesToFetch.map(async (item) => {
-          const resName = item.resourceName || item.key;
-          const data = await fetchList(resName, item.group);
-          completed++;
-          if (onProgress) {
-              onProgress(Math.round((completed / total) * 100), `Fetching ${item.key}...`);
-          }
-          return data;
-      }));
-
-      const [
-          nodes, 
-          pods, 
-          services, 
-          deployments,
-          statefulsets,
-          daemonsets,
-          replicasets,
-          ingresses,
-          pvcs,
-          configmaps,
-          secrets,
-          storageclasses,
-          jobs,
-          cronjobs,
-          hpas
-      ] = results;
-
-      if (onProgress) onProgress(100, 'Processing data...');
-
-      return this.transformK8sData({
-          nodes, 
-          pods, 
-          services, 
-          deployments,
-          statefulsets,
-          daemonsets,
-          replicasets,
-          ingresses,
-          pvcs,
-          configmaps,
-          secrets,
-          storageclasses,
-          jobs,
-          cronjobs,
-          hpas
-      });
-    } catch (e) {
-      console.error('Failed to fetch from API', e);
-      throw e;
+    const cleanBase = this.baseUrl.replace(/\/+$/, '');
+    const params = new URLSearchParams();
+    
+    if (this.mode === 'custom') {
+      params.set('target', cleanBase);
+      if (this.token && this.token.trim().length > 0) {
+        params.set('token', this.token.trim());
+      }
     }
+
+    const url = `/api/cluster/init?${params.toString()}`;
+    
+    if (onProgress) onProgress(30, 'Fetching resources...');
+
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (res.status === 401) throw new Error('Unauthorized (401)');
+      if (res.status === 403) throw new Error('Forbidden (403)');
+      throw new Error(`Failed to initialize cluster (Status: ${res.status})`);
+    }
+
+    if (onProgress) onProgress(70, 'Processing data...');
+
+    const data: ClusterInitResponse = await res.json();
+
+    if (onProgress) onProgress(90, 'Building resource map...');
+
+    // Transform LightResource[] to Record<string, ClusterResource>
+    const resources: Record<string, ClusterResource> = {};
+    
+    for (const light of data.resources) {
+      resources[light.id] = this.lightToClusterResource(light);
+    }
+
+    if (onProgress) onProgress(100, 'Done');
+
+    return { resources, links: data.links };
   }
 
+  /**
+   * Convert a LightResource to ClusterResource
+   * Note: raw is NOT populated - it will be loaded on-demand
+   */
+  private lightToClusterResource(light: LightResource): ClusterResource {
+    return {
+      id: light.id,
+      name: light.name,
+      kind: light.kind,
+      namespace: light.namespace,
+      status: light.status,
+      health: light.health,
+      labels: light.labels || {},
+      ownerRefs: light.ownerRefs || [],
+      creationTimestamp: light.creationTimestamp,
+      nodeName: light.nodeName,
+      helmRelease: light.helmRelease,
+      // raw is intentionally NOT set - loaded on-demand via getResource()
+    };
+  }
+
+  /**
+   * Fetch a list of K8s resources (used by listResources and listArgoApplications)
+   */
   private async fetchK8sList(resource: string, apiGroup: string = 'v1') {
     const prefix = apiGroup === 'v1' ? 'api/v1' : `apis/${apiGroup}`;
     const cleanBase = this.baseUrl.replace(/\/+$/, '');
@@ -227,6 +213,59 @@ export class KubeClient {
 
   async getResource(namespace: string, kind: string, name: string): Promise<any> {
     try {
+        // Special handling for HelmRelease (synthetic resource)
+        if (kind === 'HelmRelease') {
+            // Use backend endpoint to get Helm release data
+            const cleanBase = this.baseUrl.replace(/\/+$/, '');
+            const params = new URLSearchParams({
+                namespace,
+                name
+            });
+            
+            if (this.mode === 'custom') {
+                params.set('target', cleanBase);
+                if (this.token && this.token.trim().length > 0) {
+                    params.set('token', this.token.trim());
+                }
+            }
+            
+            const url = `/api/helm/release?${params.toString()}`;
+            const res = await fetch(url);
+            
+            if (!res.ok) {
+                throw new Error(`Failed to fetch Helm Release: ${res.statusText}`);
+            }
+            
+            const data = await res.json();
+            // Return in Kubernetes-like format for consistency
+            return {
+                apiVersion: 'helm.sh/v1',
+                kind: 'HelmRelease',
+                metadata: {
+                    name: data.name || name,
+                    namespace: data.namespace || namespace,
+                    uid: `helm-${namespace}-${name}`,
+                    creationTimestamp: data.updated || new Date().toISOString(),
+                    labels: {
+                        'helm.sh/chart': data.chart || '',
+                        'helm.sh/release-name': data.name || name,
+                        'helm.sh/release-namespace': data.namespace || namespace,
+                    }
+                },
+                spec: {
+                    chart: data.chart || '',
+                    version: data.chartVersion || '',
+                    releaseName: data.name || name
+                },
+                status: {
+                    status: data.status || 'unknown',
+                    revision: data.revision || 1,
+                    lastDeployed: data.updated || ''
+                },
+                ...data
+            };
+        }
+
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         let url: string;
         const headers: Record<string, string> = {
@@ -236,7 +275,12 @@ export class KubeClient {
         let endpoint = '';
         const k = kind.toLowerCase();
         
-        if (['pod', 'node', 'service', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
+        // ArgoCD Applications (CRD)
+        if (k === 'application') {
+            endpoint = namespace 
+                ? `apis/argoproj.io/v1alpha1/namespaces/${namespace}/applications/${name}`
+                : `apis/argoproj.io/v1alpha1/applications/${name}`;
+        } else if (['pod', 'node', 'service', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
         } else if (['deployment', 'statefulset', 'daemonset', 'replicaset'].includes(k)) {
             endpoint = namespace ? `apis/apps/v1/namespaces/${namespace}/${k}s` : `apis/apps/v1/${k}s`;
@@ -244,11 +288,17 @@ export class KubeClient {
             endpoint = namespace ? `apis/networking.k8s.io/v1/namespaces/${namespace}/${k}es` : `apis/networking.k8s.io/v1/${k}es`;
         } else if (['storageclass'].includes(k)) {
             endpoint = `apis/storage.k8s.io/v1/${k}es`;
+        } else if (['job', 'cronjob'].includes(k)) {
+            endpoint = namespace ? `apis/batch/v1/namespaces/${namespace}/${k}s` : `apis/batch/v1/${k}s`;
+        } else if (k === 'horizontalpodautoscaler') {
+            endpoint = namespace ? `apis/autoscaling/v2/namespaces/${namespace}/horizontalpodautoscalers` : `apis/autoscaling/v2/horizontalpodautoscalers`;
         } else {
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
         }
         
-        endpoint += `/${name}`;
+        if (k !== 'application') {
+            endpoint += `/${name}`;
+        }
 
         if (this.mode === 'custom') {
             url = `/proxy/${endpoint}`;
@@ -280,6 +330,12 @@ export class KubeClient {
 
   async getYaml(namespace: string, kind: string, name: string): Promise<string> {
     try {
+        // Special handling for HelmRelease - get JSON and convert to YAML
+        if (kind === 'HelmRelease') {
+            const resource = await this.getResource(namespace, kind, name);
+            return yaml.dump(resource);
+        }
+
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
         let url: string;
         const headers: Record<string, string> = {
@@ -290,7 +346,12 @@ export class KubeClient {
         let endpoint = '';
         const k = kind.toLowerCase();
         
-        if (['pod', 'node', 'service', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
+        // ArgoCD Applications (CRD)
+        if (k === 'application') {
+            endpoint = namespace 
+                ? `apis/argoproj.io/v1alpha1/namespaces/${namespace}/applications/${name}`
+                : `apis/argoproj.io/v1alpha1/applications/${name}`;
+        } else if (['pod', 'node', 'service', 'persistentvolumeclaim', 'configmap', 'secret', 'event'].includes(k)) {
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
         } else if (['deployment', 'statefulset', 'daemonset', 'replicaset'].includes(k)) {
             endpoint = namespace ? `apis/apps/v1/namespaces/${namespace}/${k}s` : `apis/apps/v1/${k}s`;
@@ -307,8 +368,9 @@ export class KubeClient {
             endpoint = namespace ? `api/v1/namespaces/${namespace}/${k}s` : `api/v1/${k}s`;
         }
         
-        // Append name
-        endpoint += `/${name}`;
+        if (k !== 'application') {
+            endpoint += `/${name}`;
+        }
 
         if (this.mode === 'custom') {
             url = `/proxy/${endpoint}`;
@@ -690,6 +752,479 @@ export class KubeClient {
     }
   }
 
+  // ==========================================
+  // ArgoCD Methods
+  // ==========================================
+
+  /**
+   * Check if ArgoCD is installed by looking for its CRD
+   */
+  async checkArgoCDInstalled(): Promise<boolean> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      // Check for ArgoCD Application CRD
+      const endpoint = 'apis/apiextensions.k8s.io/v1/customresourcedefinitions/applications.argoproj.io';
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * List ArgoCD Applications from all namespaces
+   */
+  async listArgoApplications(): Promise<ArgoApplication[]> {
+    try {
+      const data = await this.fetchK8sList('applications', 'argoproj.io/v1alpha1');
+      return data.items || [];
+    } catch (e) {
+      console.warn('Failed to fetch ArgoCD Applications', e);
+      return [];
+    }
+  }
+
+  /**
+   * Get a specific ArgoCD Application
+   */
+  async getArgoApplication(namespace: string, name: string): Promise<ArgoApplication | null> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      const endpoint = `apis/argoproj.io/v1alpha1/namespaces/${namespace}/applications/${name}`;
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to fetch ArgoCD Application', e);
+      return null;
+    }
+  }
+
+  /**
+   * Sync an ArgoCD Application
+   */
+  async syncArgoApplication(namespace: string, name: string, options?: {
+    revision?: string;
+    prune?: boolean;
+    dryRun?: boolean;
+  }): Promise<void> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/merge-patch+json'
+      };
+
+      const endpoint = `apis/argoproj.io/v1alpha1/namespaces/${namespace}/applications/${name}`;
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      // Create sync operation
+      const patchBody = {
+        operation: {
+          initiatedBy: { username: 'anakosmos-ui' },
+          sync: {
+            revision: options?.revision,
+            prune: options?.prune ?? true,
+            dryRun: options?.dryRun ?? false
+          }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(patchBody)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new ApiError(`Sync failed: ${res.status}`, res.status, errText);
+      }
+    } catch (e) {
+      console.error('ArgoCD sync failed', e);
+      throw e;
+    }
+  }
+
+  /**
+   * Refresh an ArgoCD Application (force reconciliation)
+   */
+  async refreshArgoApplication(namespace: string, name: string, hard?: boolean): Promise<void> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/merge-patch+json'
+      };
+
+      const endpoint = `apis/argoproj.io/v1alpha1/namespaces/${namespace}/applications/${name}`;
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      // Add refresh annotation to trigger reconciliation
+      const patchBody = {
+        metadata: {
+          annotations: {
+            'argocd.argoproj.io/refresh': hard ? 'hard' : 'normal'
+          }
+        }
+      };
+
+      const res = await fetch(url, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(patchBody)
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new ApiError(`Refresh failed: ${res.status}`, res.status, errText);
+      }
+    } catch (e) {
+      console.error('ArgoCD refresh failed', e);
+      throw e;
+    }
+  }
+
+  // ==========================================
+  // Helm Methods
+  // ==========================================
+
+  /**
+   * List Helm releases by parsing Helm secrets
+   * Helm stores release info in secrets with type "helm.sh/release.v1"
+   */
+  async listHelmReleases(): Promise<HelmRelease[]> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      let url: string;
+      const headers: Record<string, string> = {};
+
+      // List all secrets with Helm label
+      const endpoint = 'api/v1/secrets?labelSelector=owner=helm';
+
+      if (this.mode === 'custom') {
+        url = `/proxy/${endpoint}`;
+        headers['X-Kube-Target'] = cleanBase;
+      } else {
+        url = `${cleanBase}/${endpoint}`;
+      }
+
+      if (this.token && this.token.trim().length > 0) {
+        headers['Authorization'] = `Bearer ${this.token.trim()}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) return [];
+
+      const data = await res.json();
+      const secrets = data.items || [];
+
+      // Group by release name and get latest revision
+      const releaseMap = new Map<string, any>();
+
+      for (const secret of secrets) {
+        const releaseName = secret.metadata?.labels?.name;
+        const namespace = secret.metadata?.namespace;
+        const key = `${namespace}/${releaseName}`;
+        
+        if (!releaseName) continue;
+
+        const existing = releaseMap.get(key);
+        const version = parseInt(secret.metadata?.labels?.version || '0', 10);
+
+        if (!existing || version > existing.version) {
+          releaseMap.set(key, { secret, version });
+        }
+      }
+
+      // Parse release data
+      const releases: HelmRelease[] = [];
+      
+      for (const { secret } of releaseMap.values()) {
+        try {
+          // Helm stores release data base64 encoded and gzipped
+          // For now, we extract basic info from labels
+          const labels = secret.metadata?.labels || {};
+          const annotations = secret.metadata?.annotations || {};
+          
+          releases.push({
+            name: labels.name || 'unknown',
+            namespace: secret.metadata?.namespace || 'default',
+            revision: parseInt(labels.version || '1', 10),
+            status: (labels.status || 'unknown') as HelmRelease['status'],
+            chart: annotations['helm.sh/chart'] || labels.chart || 'unknown',
+            chartVersion: this.extractChartVersion(labels.chart || ''),
+            appVersion: annotations['app.kubernetes.io/version'],
+            updated: secret.metadata?.creationTimestamp || ''
+          });
+        } catch (e) {
+          console.warn('Failed to parse Helm release', e);
+        }
+      }
+
+      return releases;
+    } catch (e) {
+      console.warn('Failed to list Helm releases', e);
+      return [];
+    }
+  }
+
+  /**
+   * Get Helm release values via backend
+   */
+  async getHelmReleaseValues(namespace: string, releaseName: string): Promise<Record<string, unknown> | null> {
+    try {
+      // Helm API calls always go to our backend, not the K8s proxy
+      // For remote clusters, pass target and token as query params
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      const params = new URLSearchParams({
+        namespace,
+        name: releaseName
+      });
+      
+      if (this.mode === 'custom') {
+        params.set('target', cleanBase);
+        if (this.token && this.token.trim().length > 0) {
+          params.set('token', this.token.trim());
+        }
+      }
+      
+      const url = `/api/helm/values?${params.toString()}`;
+      const res = await fetch(url);
+      
+      if (!res.ok) {
+        console.warn('Backend returned error for Helm values:', res.status, res.statusText);
+        return null;
+      }
+
+      const data = await res.json();
+      if (!data) return null;
+      
+      return { 
+          ...data,
+          _found: true
+      };
+    } catch (e) {
+      console.warn('Failed to get Helm release values', e);
+      return null;
+    }
+  }
+
+  /**
+   * Get Helm release history
+   */
+  async getHelmHistory(namespace: string, releaseName: string): Promise<HelmHistoryEntry[]> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      const params = new URLSearchParams({
+        namespace,
+        name: releaseName
+      });
+      
+      if (this.mode === 'custom') {
+        params.set('target', cleanBase);
+        if (this.token && this.token.trim().length > 0) {
+          params.set('token', this.token.trim());
+        }
+      }
+      
+      const url = `/api/helm/history?${params.toString()}`;
+      const res = await fetch(url);
+      
+      if (!res.ok) return [];
+      return await res.json();
+    } catch (e) {
+      console.warn('Failed to get Helm history', e);
+      return [];
+    }
+  }
+
+  /**
+   * Rollback Helm release
+   */
+  async rollbackHelmRelease(namespace: string, releaseName: string, revision: number): Promise<boolean> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      const params = new URLSearchParams({
+        namespace,
+        name: releaseName
+      });
+      
+      if (this.mode === 'custom') {
+        params.set('target', cleanBase);
+        if (this.token && this.token.trim().length > 0) {
+          params.set('token', this.token.trim());
+        }
+      }
+      
+      const url = `/api/helm/rollback?${params.toString()}`;
+      const res = await fetch(url, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ revision })
+      });
+      
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to rollback Helm release', e);
+      return false;
+    }
+  }
+
+  /**
+   * Upgrade Helm release with new values
+   */
+  async updateHelmRelease(namespace: string, releaseName: string, values: Record<string, unknown>): Promise<boolean> {
+    try {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      const params = new URLSearchParams({
+        namespace,
+        name: releaseName
+      });
+      
+      if (this.mode === 'custom') {
+        params.set('target', cleanBase);
+        if (this.token && this.token.trim().length > 0) {
+          params.set('token', this.token.trim());
+        }
+      }
+      
+      const url = `/api/helm/upgrade?${params.toString()}`;
+      const res = await fetch(url, { 
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(values)
+      });
+      
+      return res.ok;
+    } catch (e) {
+      console.error('Failed to update Helm release', e);
+      return false;
+    }
+  }
+
+  /**
+   * Extract chart version from chart label (e.g., "nginx-1.2.3" -> "1.2.3")
+   */
+  private extractChartVersion(chartLabel: string): string {
+    const match = chartLabel.match(/-(\d+\.\d+\.\d+.*)$/);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * Detect Helm management info from resource labels
+   */
+  detectHelmInfo(labels: Record<string, string>, annotations: Record<string, string>, resourceNamespace: string): HelmReleaseInfo | undefined {
+    // Check for Helm labels
+    const releaseName = labels['app.kubernetes.io/instance'] || labels['helm.sh/release-name'] || annotations['helm.sh/release-name'] || annotations['meta.helm.sh/release-name'];
+    
+    // If no release name, definitely not Helm-managed
+    if (!releaseName) {
+      return undefined;
+    }
+
+    // Check if this is Helm-managed
+    // Multiple indicators:
+    // 1. app.kubernetes.io/managed-by=Helm (standard)
+    // 2. helm.sh/chart label (Helm always adds this)
+    // 3. meta.helm.sh/* labels (Helm 3+)
+    // 4. helm.sh/release-name annotation (Helm 3+)
+    const hasManagedByHelm = labels['app.kubernetes.io/managed-by'] === 'Helm';
+    const hasHelmChart = !!labels['helm.sh/chart'];
+    const hasHelmMetadata = !!(labels['helm.sh/release-name'] || annotations['helm.sh/release-name'] || labels['meta.helm.sh/release-name'] || annotations['meta.helm.sh/release-name'] || labels['meta.helm.sh/release-namespace'] || annotations['meta.helm.sh/release-namespace']);
+    
+    // If none of these indicators are present, it's not Helm-managed
+    if (!hasManagedByHelm && !hasHelmChart && !hasHelmMetadata) {
+      return undefined;
+    }
+
+    const releaseNamespace = labels['meta.helm.sh/release-namespace'] || annotations['meta.helm.sh/release-namespace'] || 
+                           labels['helm.sh/release-namespace'] || annotations['helm.sh/release-namespace'] || 
+                           resourceNamespace;
+
+    const chartName = labels['helm.sh/chart'] || annotations['helm.sh/chart'] || labels['app.kubernetes.io/name'];
+
+    return {
+      releaseName,
+      releaseNamespace: releaseNamespace || '',
+      chartName,
+      chartVersion: this.extractChartVersion(labels['helm.sh/chart'] || '')
+    };
+  }
+
+  /**
+   * Detect ArgoCD management info from resource labels/annotations
+   */
+  detectArgoInfo(labels: Record<string, string>, annotations?: Record<string, string>): ArgoAppInfo | undefined {
+    // Check for ArgoCD labels
+    const appName = labels['argocd.argoproj.io/instance'] || 
+                    labels['app.kubernetes.io/instance'];
+    const appNamespace = annotations?.['argocd.argoproj.io/tracking-id']?.split(':')[0];
+    
+    // Also check for standard Argo tracking annotation
+    const trackingId = annotations?.['argocd.argoproj.io/tracking-id'];
+    
+    if (!trackingId && !labels['argocd.argoproj.io/instance']) {
+      return undefined;
+    }
+
+    return {
+      appName: appName || 'unknown',
+      appNamespace: appNamespace || 'argocd',
+      project: labels['argocd.argoproj.io/project']
+    };
+  }
+
   async deleteResource(namespace: string, kind: string, name: string): Promise<void> {
     try {
         const cleanBase = this.baseUrl.replace(/\/+$/, '');
@@ -750,318 +1285,4 @@ export class KubeClient {
     }
   }
 
-  private transformK8sData(data: {
-      nodes: any, 
-      pods: any, 
-      services: any, 
-      deployments: any,
-      statefulsets: any,
-      daemonsets: any,
-      replicasets: any,
-      ingresses: any,
-      pvcs: any,
-      configmaps: any,
-      secrets: any,
-      storageclasses: any,
-      jobs: any,
-      cronjobs: any,
-      hpas: any
-  }) {
-    const resources: Record<string, ClusterResource> = {};
-    const links: ClusterLink[] = [];
-
-    const addRes = (item: any, kind: string, status?: string) => {
-      const id = item.metadata.uid;
-      
-      // Determine Status if not explicitly provided
-      let finalStatus = status;
-      if (!finalStatus) {
-          if (item.status?.phase) finalStatus = item.status.phase;
-          else if (item.status?.conditions) {
-              const ready = item.status.conditions.find((c: any) => c.type === 'Ready');
-              finalStatus = ready?.status === 'True' ? 'Ready' : 'NotReady';
-          } else {
-              finalStatus = 'Active';
-          }
-      }
-      
-      // Safety check to ensure it's a string
-      finalStatus = finalStatus || 'Unknown';
-
-      resources[id] = {
-        id,
-        name: item.metadata.name,
-        kind: kind,
-        namespace: item.metadata.namespace || '',
-        status: finalStatus,
-        labels: item.metadata.labels || {},
-        ownerRefs: (item.metadata.ownerReferences || []).map((ref: any) => ref.uid),
-        creationTimestamp: item.metadata.creationTimestamp,
-        raw: item // Store raw object for details view
-      };
-      
-      (item.metadata.ownerReferences || []).forEach((ref: any) => {
-         links.push({ source: id, target: ref.uid, type: 'owner' });
-      });
-
-      return id;
-    };
-
-    // Nodes
-    data.nodes.items.forEach((item: any) => {
-        const readyCondition = item.status.conditions?.find((c: any) => c.type === 'Ready');
-        const status = readyCondition?.status === 'True' ? 'Ready' : 'NotReady';
-        addRes(item, 'Node', status);
-    });
-
-    // Pods
-    data.pods.items.forEach((item: any) => {
-      const podId = addRes(item, 'Pod', item.status.phase);
-      if (item.spec.nodeName) {
-        const node = data.nodes.items.find((n: any) => n.metadata.name === item.spec.nodeName);
-        if (node) {
-          links.push({ source: podId, target: node.metadata.uid, type: 'owner' });
-        }
-      }
-    });
-
-    // Workloads
-    data.deployments.items.forEach((item: any) => {
-        const available = item.status?.availableReplicas === item.status?.replicas;
-        addRes(item, 'Deployment', available ? 'Available' : 'Progressing');
-    });
-    data.statefulsets.items.forEach((item: any) => {
-        const ready = item.status?.readyReplicas === item.status?.replicas;
-        const stsId = addRes(item, 'StatefulSet', ready ? 'Ready' : 'Progressing');
-        
-        // Link Pods to StatefulSet (OwnerRef logic handles this if K8s sets it, 
-        // but often Pods are owned by ControllerRevision or just matching labels)
-        // We'll fallback to label matching for robustness
-        if (item.spec.selector) {
-            data.pods.items.forEach((pod: any) => {
-                const match = Object.entries(item.spec.selector.matchLabels || {}).every(([k, v]) => pod.metadata.labels?.[k] === v);
-                if (match) {
-                    // Check if link already exists (from OwnerRef) to avoid duplicates
-                    const exists = links.some(l => l.source === pod.metadata.uid && l.target === stsId);
-                    if (!exists) links.push({ source: pod.metadata.uid, target: stsId, type: 'owner' });
-                }
-            });
-        }
-    });
-    data.daemonsets.items.forEach((item: any) => {
-        const ready = item.status?.numberReady === item.status?.desiredNumberScheduled;
-        const dsId = addRes(item, 'DaemonSet', ready ? 'Ready' : 'Progressing');
-        
-        // Link Pods to DaemonSet (Label matching fallback)
-        if (item.spec.selector) {
-            data.pods.items.forEach((pod: any) => {
-                const match = Object.entries(item.spec.selector.matchLabels || {}).every(([k, v]) => pod.metadata.labels?.[k] === v);
-                if (match) {
-                    const exists = links.some(l => l.source === pod.metadata.uid && l.target === dsId);
-                    if (!exists) links.push({ source: pod.metadata.uid, target: dsId, type: 'owner' });
-                }
-            });
-        }
-    });
-    data.replicasets.items.forEach((item: any) => addRes(item, 'ReplicaSet'));
-
-    // Networking
-    data.services.items.forEach((item: any) => {
-      const svcId = addRes(item, 'Service');
-      if (item.spec.selector) {
-        data.pods.items.forEach((pod: any) => {
-          const match = Object.entries(item.spec.selector).every(([k, v]) => pod.metadata.labels?.[k] === v);
-          if (match) {
-            links.push({ source: svcId, target: pod.metadata.uid, type: 'network' });
-          }
-        });
-      }
-    });
-
-    data.ingresses.items.forEach((item: any) => {
-        const ingId = addRes(item, 'Ingress');
-        // Simple Ingress Linking (assuming backend service name matches)
-        item.spec.rules?.forEach((rule: any) => {
-            rule.http?.paths?.forEach((path: any) => {
-                const svcName = path.backend?.service?.name;
-                if (svcName) {
-                     const svc = data.services.items.find((s: any) => s.metadata.name === svcName && s.metadata.namespace === item.metadata.namespace);
-                     if (svc) {
-                         links.push({ source: ingId, target: svc.metadata.uid, type: 'network' });
-                     }
-                }
-            });
-        });
-    });
-
-    // Config & Storage
-    data.pvcs.items.forEach((item: any) => {
-        const pvcId = addRes(item, 'PersistentVolumeClaim', item.status.phase);
-        // Link PVC to StorageClass
-        if (item.spec.storageClassName) {
-            const sc = data.storageclasses.items.find((s: any) => s.metadata.name === item.spec.storageClassName);
-            if (sc) {
-                links.push({ source: pvcId, target: sc.metadata.uid, type: 'storage' });
-            }
-        }
-    });
-    data.storageclasses.items.forEach((item: any) => addRes(item, 'StorageClass'));
-    data.configmaps.items.forEach((item: any) => addRes(item, 'ConfigMap'));
-    data.secrets.items.forEach((item: any) => addRes(item, 'Secret'));
-    
-    // Jobs
-    data.jobs.items.forEach((item: any) => {
-        const conditions = item.status?.conditions || [];
-        const completeCond = conditions.find((c: any) => c.type === 'Complete' && c.status === 'True');
-        const failedCond = conditions.find((c: any) => c.type === 'Failed' && c.status === 'True');
-        // Check for any warning/error conditions (like FailedCreate)
-        const hasWarningCondition = conditions.some((c: any) => 
-            c.status === 'True' && 
-            (c.type?.includes('Failed') || c.reason?.includes('Failed') || c.reason?.includes('Error') || c.reason?.includes('BackoffLimit'))
-        );
-        
-        let status = 'Pending';
-        if (completeCond) {
-            status = 'Complete';
-        } else if (failedCond || hasWarningCondition) {
-            status = 'Failed';
-        } else if ((item.status?.active || 0) > 0) {
-            status = 'Running';
-        } else if ((item.status?.succeeded || 0) > 0) {
-            status = 'Complete';
-        }
-        addRes(item, 'Job', status);
-    });
-    
-    // CronJobs
-    data.cronjobs.items.forEach((item: any) => {
-        const suspended = item.spec?.suspend === true;
-        const status = suspended ? 'Suspended' : 'Active';
-        addRes(item, 'CronJob', status);
-        // Jobs linked to CronJobs via ownerReferences (handled by addRes)
-    });
-    
-    // HorizontalPodAutoscalers
-    data.hpas.items.forEach((item: any) => {
-        const conditions = item.status?.conditions || [];
-        const ableCond = conditions.find((c: any) => c.type === 'AbleToScale' && c.status === 'True');
-        const scalingActiveCond = conditions.find((c: any) => c.type === 'ScalingActive' && c.status === 'True');
-        let status = 'Unknown';
-        if (ableCond && scalingActiveCond) status = 'Active';
-        else if (ableCond) status = 'Ready';
-        else status = 'Inactive';
-        
-        const hpaId = addRes(item, 'HorizontalPodAutoscaler', status);
-        
-        // Link HPA to its target (Deployment, StatefulSet, etc.)
-        const targetRef = item.spec?.scaleTargetRef;
-        if (targetRef) {
-            const targetKind = targetRef.kind;
-            const targetName = targetRef.name;
-            const ns = item.metadata.namespace;
-            
-            // Find the target resource
-            let targetItems: any[] = [];
-            if (targetKind === 'Deployment') targetItems = data.deployments.items;
-            else if (targetKind === 'StatefulSet') targetItems = data.statefulsets.items;
-            else if (targetKind === 'ReplicaSet') targetItems = data.replicasets.items;
-            
-            const target = targetItems.find((t: any) => t.metadata.name === targetName && t.metadata.namespace === ns);
-            if (target) {
-                links.push({ source: hpaId, target: target.metadata.uid, type: 'owner' });
-            }
-        }
-    });
-
-    // Link PVCs, ConfigMaps, Secrets to Pods
-    data.pods.items.forEach((pod: any) => {
-        // 1. Link via Volumes
-        pod.spec.volumes?.forEach((vol: any) => {
-            // Standard ConfigMap
-            if (vol.configMap) {
-                 const cmName = vol.configMap.name;
-                 const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                 if (cm) {
-                    links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
-                 }
-            }
-            // Standard Secret
-            if (vol.secret) {
-                 const secName = vol.secret.secretName;
-                 const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                 if (sec) {
-                    links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
-                 }
-            }
-            // PVC
-            if (vol.persistentVolumeClaim) {
-                const claimName = vol.persistentVolumeClaim.claimName;
-                const pvc = data.pvcs.items.find((p: any) => p.metadata.name === claimName && p.metadata.namespace === pod.metadata.namespace);
-                if (pvc) {
-                    links.push({ source: pod.metadata.uid, target: pvc.metadata.uid, type: 'storage' });
-                }
-            }
-            // Projected Volumes (Sources: ConfigMap, Secret, DownwardAPI, ServiceAccountToken)
-            if (vol.projected && vol.projected.sources) {
-                vol.projected.sources.forEach((source: any) => {
-                    if (source.configMap) {
-                        const cmName = source.configMap.name;
-                        const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                        if (cm) {
-                            links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
-                        }
-                    }
-                    if (source.secret) {
-                        const secName = source.secret.name;
-                        const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                        if (sec) {
-                            links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
-                        }
-                    }
-                });
-            }
-        });
-
-        // 2. Link via Environment Variables (env & envFrom)
-        pod.spec.containers?.forEach((container: any) => {
-            // envFrom (ConfigMapRef / SecretRef)
-            container.envFrom?.forEach((envFrom: any) => {
-                if (envFrom.configMapRef) {
-                    const cmName = envFrom.configMapRef.name;
-                    const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                    if (cm) {
-                        links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
-                    }
-                }
-                if (envFrom.secretRef) {
-                    const secName = envFrom.secretRef.name;
-                    const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                    if (sec) {
-                        links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
-                    }
-                }
-            });
-
-            // env (valueFrom)
-            container.env?.forEach((env: any) => {
-                if (env.valueFrom?.configMapKeyRef) {
-                    const cmName = env.valueFrom.configMapKeyRef.name;
-                    const cm = data.configmaps.items.find((c: any) => c.metadata.name === cmName && c.metadata.namespace === pod.metadata.namespace);
-                    if (cm) {
-                        links.push({ source: pod.metadata.uid, target: cm.metadata.uid, type: 'config' });
-                    }
-                }
-                if (env.valueFrom?.secretKeyRef) {
-                    const secName = env.valueFrom.secretKeyRef.name;
-                    const sec = data.secrets.items.find((s: any) => s.metadata.name === secName && s.metadata.namespace === pod.metadata.namespace);
-                    if (sec) {
-                        links.push({ source: pod.metadata.uid, target: sec.metadata.uid, type: 'config' });
-                    }
-                }
-            });
-        });
-    });
-
-    return { resources, links };
-  }
 }

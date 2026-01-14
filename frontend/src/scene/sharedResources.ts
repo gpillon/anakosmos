@@ -21,6 +21,8 @@ export const tetraGeo = new THREE.TetrahedronGeometry(0.5);                     
 export const jobGeo = new THREE.BoxGeometry(0.5, 0.3, 0.5);                     // Job: flat box
 export const cronJobGeo = new THREE.BoxGeometry(0.5, 0.3, 0.5);                 // CronJob: flat box (rotated)
 export const hpaGeo = new THREE.TorusGeometry(0.4, 0.08, 8, 32);                // HPA: thin ring (scale)
+export const argoAppGeo = new THREE.OctahedronGeometry(0.55, 1);               // ArgoCD Application: stellated octahedron
+export const helmReleaseGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);            // Helm Release: package box
 
 // Rotate CronJob geometry slightly for distinction
 cronJobGeo.rotateY(Math.PI / 4);

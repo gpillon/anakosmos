@@ -11,6 +11,11 @@ interface LinkLayerProps {
   positionsRef: React.MutableRefObject<Record<string, [number, number, number]>>;
 }
 
+interface VisibleLink {
+  link: ClusterLink;
+  color: [number, number, number];
+}
+
 export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
   const isOnboardingActive = useOnboardingStore(state => state.isActive);
   const { resources, links } = useDisplayResources(isOnboardingActive);
@@ -19,28 +24,27 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
   const statusFilters = useSettingsStore(state => state.statusFilters);
   const selectedResourceId = useSettingsStore(state => state.selectedResourceId);
   
-  // Need filtered context to hide orphan links if nodes are filtered out by search/namespace
   const searchQuery = useSettingsStore(state => state.searchQuery);
   const filterNamespaces = useSettingsStore(state => state.filterNamespaces);
   const hideSystemNamespaces = useSettingsStore(state => state.hideSystemNamespaces);
   const activePreset = useSettingsStore(state => state.activePreset);
 
   const geometryRef = useRef<THREE.BufferGeometry>(null);
+  const positionArrayRef = useRef<Float32Array | null>(null);
+  const colorArrayRef = useRef<Float32Array | null>(null);
+  const prevCountRef = useRef(0);
 
-  // Pre-compute visible links and colors. 
-  // This memo only runs when topology or filtering settings change, not on position updates.
-  const { visibleLinks, colors, count } = useMemo(() => {
-    const validLinks: ClusterLink[] = [];
-    const colorArray: number[] = [];
+  // Pre-compute visible links and colors
+  const visibleLinks = useMemo(() => {
+    const result: VisibleLink[] = [];
 
-    // Helper to get color - brighter colors for better visibility
-    const getColor = (type: string, dimmed: boolean) => {
-        if (dimmed) return [0.15, 0.15, 0.15]; // Very dim gray
+    const getColor = (type: string, dimmed: boolean): [number, number, number] => {
+        if (dimmed) return [0.15, 0.15, 0.15];
         switch (type) {
-            case 'owner': return [0.58, 0.64, 0.72]; // Slate 400
-            case 'network': return [0.23, 0.51, 0.96]; // Blue 500
-            case 'config': return [0.85, 0.45, 1.0]; // Bright Magenta/Purple
-            case 'storage': return [1.0, 0.6, 0.1]; // Bright Orange
+            case 'owner': return [0.58, 0.64, 0.72];
+            case 'network': return [0.23, 0.51, 0.96];
+            case 'config': return [0.85, 0.45, 1.0];
+            case 'storage': return [1.0, 0.6, 0.1];
             default: return [0.5, 0.5, 0.5];
         }
     };
@@ -53,7 +57,6 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
       if (hiddenLinkTypes.includes(link.type)) return;
       if (hiddenResourceKinds.includes(sourceRes.kind) || hiddenResourceKinds.includes(targetRes.kind)) return;
 
-      // Check if nodes are visible according to current filters (Search, Namespace, etc)
       const isSourceVisible = shouldShowResource(sourceRes, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters);
       const isTargetVisible = shouldShowResource(targetRes, searchQuery, filterNamespaces, hideSystemNamespaces, hiddenResourceKinds, activePreset, links, statusFilters);
       
@@ -69,79 +72,93 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
         : true;
 
       const dimmed = selectedResourceId !== null && !isConnected;
-      const [r, g, b] = getColor(link.type, dimmed);
+      const color = getColor(link.type, dimmed);
 
-      validLinks.push(link);
-      colorArray.push(r, g, b, r, g, b); // Two vertices per link
+      result.push({ link, color });
     });
 
-    return { 
-        visibleLinks: validLinks, 
-        colors: new Float32Array(colorArray),
-        count: validLinks.length 
-    };
+    return result;
   }, [links, resources, hiddenLinkTypes, hiddenResourceKinds, statusFilters, selectedResourceId, searchQuery, filterNamespaces, hideSystemNamespaces, activePreset]);
 
-  // Update positions every frame directly in the buffer attribute
+  const count = visibleLinks.length;
+
+  // Create/resize buffers only when count changes
+  useMemo(() => {
+    const size = count * 6;
+    if (!positionArrayRef.current || positionArrayRef.current.length !== size) {
+      positionArrayRef.current = new Float32Array(size);
+    }
+    if (!colorArrayRef.current || colorArrayRef.current.length !== size) {
+      colorArrayRef.current = new Float32Array(size);
+    }
+    // Fill color array
+    visibleLinks.forEach((item, i) => {
+      const [r, g, b] = item.color;
+      const idx = i * 6;
+      colorArrayRef.current![idx] = r;
+      colorArrayRef.current![idx + 1] = g;
+      colorArrayRef.current![idx + 2] = b;
+      colorArrayRef.current![idx + 3] = r;
+      colorArrayRef.current![idx + 4] = g;
+      colorArrayRef.current![idx + 5] = b;
+    });
+    prevCountRef.current = count;
+  }, [count, visibleLinks]);
+
+  // Update positions every frame
   useFrame(() => {
-    if (!geometryRef.current) return;
+    if (!geometryRef.current || !positionArrayRef.current) return;
     
     const posAttr = geometryRef.current.attributes.position;
-    const array = posAttr.array as Float32Array;
+    if (!posAttr) return;
+    
+    const posArray = posAttr.array as Float32Array;
     let needsUpdate = false;
 
-    // We assume the buffer size matches visibleLinks * 6 (2 vertices * 3 coords)
-    // If visibleLinks changed, the geometry was recreated, so size should be correct.
-    
     for (let i = 0; i < visibleLinks.length; i++) {
-        const link = visibleLinks[i];
+        const { link } = visibleLinks[i];
         const start = positionsRef.current[link.source];
         const end = positionsRef.current[link.target];
 
+        const idx = i * 6;
         if (start && end) {
-            const idx = i * 6;
-            // Start Point
-            array[idx] = start[0];
-            array[idx+1] = start[1];
-            array[idx+2] = start[2];
-            
-            // End Point
-            array[idx+3] = end[0];
-            array[idx+4] = end[1];
-            array[idx+5] = end[2];
-            
+            posArray[idx] = start[0];
+            posArray[idx+1] = start[1];
+            posArray[idx+2] = start[2];
+            posArray[idx+3] = end[0];
+            posArray[idx+4] = end[1];
+            posArray[idx+5] = end[2];
             needsUpdate = true;
         } else {
-            // Collapse line to 0 if positions not ready
-            const idx = i * 6;
-            array.fill(0, idx, idx + 6);
+            posArray[idx] = 0;
+            posArray[idx+1] = 0;
+            posArray[idx+2] = 0;
+            posArray[idx+3] = 0;
+            posArray[idx+4] = 0;
+            posArray[idx+5] = 0;
         }
     }
 
     if (needsUpdate) {
         posAttr.needsUpdate = true;
-        // Recompute bounding sphere occasionally if needed, but for lines usually strict frustum culling isn't critical or we set big bounds
-        if (!geometryRef.current.boundingSphere) {
-             geometryRef.current.computeBoundingSphere();
-        }
     }
   });
 
-  if (count === 0) return null;
+  if (count === 0 || !positionArrayRef.current || !colorArrayRef.current) return null;
 
+  // Use key to force geometry recreation only when count changes
+  // Disable raycast to prevent lines from blocking clicks on resources behind them
   return (
-    <lineSegments>
+    <lineSegments key={`links-${count}`} raycast={() => null}>
       <bufferGeometry ref={geometryRef}>
         <bufferAttribute 
             attach="attributes-position" 
-            count={count * 2} 
-            args={[new Float32Array(count * 6), 3]}
+            args={[positionArrayRef.current, 3]}
             usage={THREE.DynamicDrawUsage} 
         />
         <bufferAttribute 
             attach="attributes-color" 
-            count={count * 2} 
-            args={[colors, 3]} 
+            args={[colorArrayRef.current, 3]}
         />
       </bufferGeometry>
       <lineBasicMaterial vertexColors transparent opacity={0.6} linewidth={1} />

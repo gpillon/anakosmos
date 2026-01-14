@@ -39,57 +39,57 @@ interface StepConfig {
 const STEPS: StepConfig[] = [
   {
     id: 'welcome',
-    title: 'Benvenuto in Anakosmos',
-    description: 'Stai per esplorare il tuo cluster Kubernetes in 3D.\n\nQuesta guida ti mostrerà passo dopo passo come funziona la visualizzazione.',
+    title: 'Welcome to Anakosmos',
+    description: 'You are about to explore your Kubernetes cluster in 3D.\n\nThis guide will show you step by step how the visualization works.',
     icon: Sparkles,
     position: 'center',
   },
   {
     id: 'first-node',
-    title: 'Il Nodo',
-    description: 'Ecco il tuo primo nodo! In Kubernetes, un Node è un server fisico o virtuale che esegue i tuoi container.\n\nI nodi sono rappresentati come piattaforme esagonali.',
+    title: 'The Node',
+    description: 'Here is your first node! In Kubernetes, a Node is a physical or virtual server that runs your containers.\n\nNodes are represented as hexagonal platforms.',
     icon: Server,
     position: 'top-right',
   },
   {
     id: 'first-pod',
-    title: 'Il Pod',
-    description: 'Ecco il tuo primo Pod! Un Pod è l\'unità più piccola in Kubernetes - contiene uno o più container.\n\nI pod sono sfere colorate posizionate sui nodi che li eseguono.',
+    title: 'The Pod',
+    description: 'Here is your first Pod! A Pod is the smallest unit in Kubernetes - it contains one or more containers.\n\nPods are colored spheres placed on the nodes that run them.',
     icon: Box,
     position: 'top-right',
   },
   {
     id: 'more-pods',
-    title: 'Repliche',
-    description: 'Ora hai 3 repliche del Pod! Kubernetes può eseguire più copie della tua applicazione per gestire il carico e garantire alta disponibilità.\n\nOgni sfera rappresenta un\'istanza indipendente.',
+    title: 'Replicas',
+    description: 'Now you have 3 replicas of the Pod! Kubernetes can run multiple copies of your application to handle load and ensure high availability.\n\nEach sphere represents an independent instance.',
     icon: Boxes,
     position: 'top-right',
   },
   {
     id: 'deployment',
-    title: 'Deployment e ReplicaSet',
-    description: 'Ecco la gerarchia completa!\n\n📦 Deployment: gestisce gli aggiornamenti\n📋 ReplicaSet: mantiene il numero di repliche\n🔵 Pods: le istanze effettive\n\nLe linee mostrano le relazioni di ownership.',
+    title: 'Deployment and ReplicaSet',
+    description: 'Here is the complete hierarchy!\n\n📦 Deployment: manages updates\n📋 ReplicaSet: maintains the number of replicas\n🔵 Pods: the actual instances\n\nThe lines show ownership relationships.',
     icon: GitBranch,
     position: 'top-right',
   },
   {
     id: 'networking',
     title: 'Networking',
-    description: 'Ora aggiungiamo il networking!\n\n🔗 Service: espone i pod internamente\n🌐 Ingress: espone il servizio all\'esterno\n\nLe linee verdi mostrano le connessioni di rete.',
+    description: 'Now let\'s add networking!\n\n🔗 Service: exposes pods internally\n🌐 Ingress: exposes the service externally\n\nThe green lines show network connections.',
     icon: Network,
     position: 'top-right',
   },
   {
     id: 'full-cluster',
-    title: 'Cluster Completo',
-    description: 'Ecco un esempio di cluster più realistico con:\n\n• 2 nodi\n• Frontend e Backend\n• Services e Ingress\n• ConfigMap e Secret\n\nIn un cluster reale potresti avere centinaia di risorse!',
+    title: 'Full Cluster',
+    description: 'Here is a more realistic cluster example with:\n\n• 2 nodes\n• Frontend and Backend\n• Services and Ingress\n• ConfigMap and Secret\n\nIn a real cluster you might have hundreds of resources!',
     icon: Globe,
     position: 'top-right',
   },
   {
     id: 'topbar',
-    title: 'Barra Superiore',
-    description: 'Qui trovi l\'elenco dei namespace.\n\nPuoi filtrare per namespace e cercare risorse specifiche (Qualunque risorsa!).',
+    title: 'Top Bar',
+    description: 'Here you find the list of namespaces.\n\nYou can filter by namespace and search for specific resources (Any resource!).',
     icon: Filter,
     position: 'top',
     highlight: 'topbar',
@@ -97,8 +97,8 @@ const STEPS: StepConfig[] = [
   },
   {
     id: 'legend',
-    title: 'Legenda e Filtri',
-    description: 'Questo pannello ti permette di:\n\n• Vedere i tipi di risorse\n• Filtrare per categoria\n• Nascondere/mostrare elementi\n• Focalizzare su specifiche risorse',
+    title: 'Legend and Filters',
+    description: 'This panel allows you to:\n\n• See resource types\n• Filter by category\n• Hide/show elements\n• Focus on specific resources',
     icon: Eye,
     position: 'bottom-left',
     highlight: 'legend',
@@ -106,8 +106,8 @@ const STEPS: StepConfig[] = [
   },
   {
     id: 'viewselector',
-    title: 'Modalità di Visualizzazione',
-    description: 'Scegli tra 5 viste:\n\n🔍 Overview: tutto il cluster\n⚙️ Workloads: deployment e pod\n🌐 Networking: servizi e ingress\n🖥️ Nodes: infrastruttura\n💾 Storage: volumi persistenti',
+    title: 'Visualization Modes',
+    description: 'Choose from 5 views:\n\n🔍 Overview: the whole cluster\n⚙️ Workloads: deployments and pods\n🌐 Networking: services and ingress\n🖥️ Nodes: infrastructure\n💾 Storage: persistent volumes',
     icon: LayoutGrid,
     position: 'bottom-center',
     highlight: 'viewselector',
@@ -115,15 +115,15 @@ const STEPS: StepConfig[] = [
   },
   {
     id: 'interactions',
-    title: 'Interazioni',
-    description: '🖱️ Click sinistro: seleziona risorse\n🖱️ Click destro + trascina: ruota la vista\n🖱️ Scroll: zoom in/out\n⌨️ ESC: deseleziona',
+    title: 'Interactions',
+    description: '🖱️ Left click: select resources\n🖱️ Right click + drag: rotate view\n🖱️ Scroll: zoom in/out\n⌨️ ESC: deselect',
     icon: MousePointer2,
     position: 'center',
   },
   {
     id: 'complete',
-    title: 'Pronto per Esplorare!',
-    description: 'Hai completato il tutorial! 🎉\n\nOra sei pronto per esplorare il tuo cluster Kubernetes in 3D.\n\nBuona esplorazione!',
+    title: 'Ready to Explore!',
+    description: 'You have completed the tutorial! 🎉\n\nYou are now ready to explore your Kubernetes cluster in 3D.\n\nHappy exploration!',
     icon: Rocket,
     position: 'center',
   },
@@ -180,19 +180,19 @@ const OnboardingKeyboardHandler: React.FC = () => {
       // ALT+O to reset and restart onboarding (for testing)
       if (e.altKey && (e.key.toLowerCase() === 'o' || e.code === 'KeyO')) {
         e.preventDefault();
-        console.log('[Onboarding] ALT+O pressed - resetting and starting onboarding');
+        //console.log('[Onboarding] ALT+O pressed - resetting and starting onboarding');
         
         // Clear localStorage directly to ensure clean reset
         localStorage.removeItem('anakosmos-onboarding');
-        console.log('[Onboarding] Cleared localStorage');
+        //console.log('[Onboarding] Cleared localStorage');
         
         // Reset the store state
         resetOnboarding();
-        console.log('[Onboarding] Called resetOnboarding');
+        //console.log('[Onboarding] Called resetOnboarding');
         
         // Force start after a brief delay
         setTimeout(() => {
-          console.log('[Onboarding] Starting onboarding after reset');
+          //console.log('[Onboarding] Starting onboarding after reset');
           startOnboarding();
         }, 150);
       }
@@ -212,7 +212,7 @@ const useAutoStartOnboarding = () => {
   useEffect(() => {
     // Auto-start onboarding for new users when scene is ready
     if (!isCompleted && isSceneReady && !isActive) {
-      console.log('[Onboarding] Auto-starting onboarding for new user');
+      //console.log('[Onboarding] Auto-starting onboarding for new user');
       const timer = setTimeout(() => {
         startOnboarding();
       }, 500);
@@ -230,7 +230,7 @@ const useSyncDemoResources = () => {
   useEffect(() => {
     // When onboarding is active, set demo resources based on current step
     if (isActive) {
-      console.log('[Onboarding] Setting demo resource level:', demoLevel, 'for step:', currentStep);
+      //console.log('[Onboarding] Setting demo resource level:', demoLevel, 'for step:', currentStep);
       // Small delay for smooth transitions
       const timer = setTimeout(() => {
         setDemoResourceLevel(demoLevel);
@@ -340,7 +340,7 @@ export const OnboardingTutorial: React.FC = () => {
             <button 
               onClick={handleSkip}
               className="absolute top-4 right-4 p-1 text-slate-500 hover:text-white transition-colors rounded-full hover:bg-slate-700/50"
-              title="Salta tutorial"
+              title="Skip tutorial"
             >
               <X size={18} />
             </button>
@@ -351,7 +351,7 @@ export const OnboardingTutorial: React.FC = () => {
               </div>
               <div>
                 <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">
-                  Passo {currentIndex + 1} di {STEPS.length}
+                  Step {currentIndex + 1} of {STEPS.length}
                 </div>
                 <h2 className="text-xl font-bold text-white">
                   {currentStepConfig.title}
@@ -375,7 +375,7 @@ export const OnboardingTutorial: React.FC = () => {
                   className="flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-700/50 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors border border-slate-600/50"
                 >
                   <ChevronLeft size={18} />
-                  Indietro
+                  Back
                 </button>
               )}
               
@@ -391,11 +391,11 @@ export const OnboardingTutorial: React.FC = () => {
                 {isLast ? (
                   <>
                     <CheckCircle2 size={18} />
-                    Inizia ad esplorare
+                    Start exploring
                   </>
                 ) : (
                   <>
-                    Avanti
+                    Next
                     <ChevronRight size={18} />
                   </>
                 )}
@@ -407,7 +407,7 @@ export const OnboardingTutorial: React.FC = () => {
                 onClick={handleSkip}
                 className="text-center text-sm text-slate-500 hover:text-slate-300 transition-colors"
               >
-                Ho già usato Anakosmos, salta il tutorial
+                I have already used Anakosmos, skip the tutorial
               </button>
             )}
           </div>

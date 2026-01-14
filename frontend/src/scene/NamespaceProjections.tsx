@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useState, useRef, memo, useMemo } from 'react';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -7,18 +7,17 @@ import { useFrame } from '@react-three/fiber';
  * Computes the Convex Hull of a set of points (Jarvis March / Gift Wrapping).
  * Simplified 2D implementation for XZ plane.
  */
-function getConvexHull(points: THREE.Vector3[]): THREE.Vector3[] {
-  if (points.length < 3) return points; // Line or point
+function getConvexHull(points: [number, number][]): [number, number][] {
+  if (points.length < 3) return points;
 
-  // Find leftmost point
   let left = 0;
   for (let i = 1; i < points.length; i++) {
-    if (points[i].x < points[left].x) {
+    if (points[i][0] < points[left][0]) {
       left = i;
     }
   }
 
-  const hull: THREE.Vector3[] = [];
+  const hull: [number, number][] = [];
   let p = left;
   let q: number;
 
@@ -27,11 +26,10 @@ function getConvexHull(points: THREE.Vector3[]): THREE.Vector3[] {
     q = (p + 1) % points.length;
     
     for (let i = 0; i < points.length; i++) {
-      // Cross product to check turn direction
-      const val = (points[i].z - points[p].z) * (points[q].x - points[p].x) -
-                  (points[i].x - points[p].x) * (points[q].z - points[p].z);
+      const val = (points[i][1] - points[p][1]) * (points[q][0] - points[p][0]) -
+                  (points[i][0] - points[p][0]) * (points[q][1] - points[p][1]);
       
-      if (val < 0) { // Counter-clockwise turn
+      if (val < 0) {
         q = i;
       }
     }
@@ -41,120 +39,101 @@ function getConvexHull(points: THREE.Vector3[]): THREE.Vector3[] {
   return hull;
 }
 
-interface ZoneProps {
-  namespace: string;
-  positions: THREE.Vector3[];
-  color: string;
-}
-
 const MIN_HULL_POINTS = 5;
 const BASE_OFFSET = 2;
-/**
- * Ensures we have at least MIN_HULL_POINTS for a visually pleasing zone
- * Adds synthetic points in a circle around the centroid if needed
- */
-function ensureMinimumPoints(points: THREE.Vector3[], minPoints: number): THREE.Vector3[] {
+
+function ensureMinimumPoints(points: [number, number][], minPoints: number): [number, number][] {
   if (points.length >= minPoints) return points;
   
-  // Calculate centroid and max distance from it
-  const center = new THREE.Vector3();
-  points.forEach(p => center.add(p));
-  center.divideScalar(points.length || 1);
+  let centerX = 0, centerZ = 0;
+  points.forEach(p => { centerX += p[0]; centerZ += p[1]; });
+  centerX /= points.length || 1;
+  centerZ /= points.length || 1;
   
-  // Find the maximum distance from center (minimum radius for synthetic points)
-  let maxDist = 2; // Minimum radius
+  let maxDist = 2;
   points.forEach(p => {
-    const dist = Math.sqrt(
-      Math.pow(p.x - center.x, 2) + Math.pow(p.z - center.z, 2)
-    );
+    const dist = Math.sqrt(Math.pow(p[0] - centerX, 2) + Math.pow(p[1] - centerZ, 2));
     maxDist = Math.max(maxDist, dist);
   });
   
-  // Add a bit of padding
   const radius = maxDist + 1.5;
-  
-  // Create synthetic points evenly distributed around the center
   const result = [...points];
   const syntheticCount = minPoints - points.length;
   
   for (let i = 0; i < syntheticCount; i++) {
-    // Distribute evenly around the circle, offset by existing points
     const angle = (2 * Math.PI * i) / syntheticCount + Math.PI / 6;
-    const syntheticPoint = new THREE.Vector3(
-      center.x + Math.cos(angle) * radius,
-      center.y,
-      center.z + Math.sin(angle) * radius
-    );
-    result.push(syntheticPoint);
+    result.push([centerX + Math.cos(angle) * radius, centerZ + Math.sin(angle) * radius]);
   }
   
   return result;
 }
 
-const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => {
-  // Compute dynamic geometry
-  const { geometry, centroid } = useMemo(() => {
-    if (positions.length === 0) return { geometry: null, centroid: new THREE.Vector3() };
+interface ZoneProps {
+  namespace: string;
+  positionsKey: string;  // Only re-render when this key changes
+  centerX: number;
+  centerZ: number;
+  hullPoints: [number, number][];
+  color: string;
+}
 
-    // 1. Calculate Centroid
-    const center = new THREE.Vector3();
-    positions.forEach(p => center.add(p));
-    center.divideScalar(positions.length);
-
-    // 2. Ensure minimum points for a nice shape
-    const expandedPositions = ensureMinimumPoints(positions, MIN_HULL_POINTS);
-
-    // 3. Convex Hull for boundary
-    const hullPoints = getConvexHull(expandedPositions);
+// Memoized zone component - only re-renders when positionsKey changes
+// Uses positionsKey for comparison instead of deep comparing hullPoints array
+const NamespaceZone = memo<ZoneProps>(({ namespace, positionsKey, centerX, centerZ, hullPoints, color }) => {
+  // Use useMemo to create the Shape, R3F handles the geometry lifecycle automatically
+  const shape = useMemo(() => {
+    if (hullPoints.length === 0) return null;
     
-    // Create shape from hull points
-    const shape = new THREE.Shape();
-    if (hullPoints.length > 0) {
-        // Map: 3D X -> 2D X, 3D Z -> 2D Y (Shape's Y is our Z)
-        shape.moveTo(hullPoints[0].x, hullPoints[0].z); 
-        for (let i = 1; i < hullPoints.length; i++) {
-            shape.lineTo(hullPoints[i].x, hullPoints[i].z);
-        }
-        shape.closePath();
+    const s = new THREE.Shape();
+    s.moveTo(hullPoints[0][0], hullPoints[0][1]); 
+    for (let i = 1; i < hullPoints.length; i++) {
+      s.lineTo(hullPoints[i][0], hullPoints[i][1]);
     }
-    
-    const shapeGeo = new THREE.ShapeGeometry(shape);
-    
-    return { geometry: shapeGeo, centroid: center };
-  }, [positions]);
+    s.closePath();
+    return s;
+  }, [positionsKey, hullPoints]); // positionsKey changes when hullPoints changes significantly
 
-  if (!geometry) return null;
+  // Create points for the line loop matching the shape (local XY plane)
+  const linePoints = useMemo(() => {
+     if (hullPoints.length === 0) return null;
+     // For LineLoop we don't need to duplicate the first point
+     return hullPoints.map(p => new THREE.Vector3(p[0], p[1], 0));
+  }, [positionsKey, hullPoints]);
 
+  if (!shape || !linePoints) return null;
 
-
+  // Custom raycast function that disables hit detection (clicks pass through)
+  const noRaycast = () => null;
+  
   return (
     <group>
-        {/* Fill */}
-        <mesh position={[0, -(BASE_OFFSET + .95), 0]} rotation={[Math.PI / 2, 0, 0]}>
-            {/* 
-               ShapeGeometry is on XY plane.
-               Data is (x, z) mapped to (x, y).
-               To put it on floor (XZ), we rotate X axis.
-               
-               If we use -PI/2 (Standard top-down): +Y becomes -Z.
-               If our data Z was positive, it now points to -Z (Backwards).
-               
-               If we use +PI/2 (Bottom-up): +Y becomes +Z.
-               This preserves the coordinate system direction.
-             */}
-            <primitive object={geometry} attach="geometry" />
+        <mesh 
+          key={`mesh-${positionsKey}`}
+          position={[0, -(BASE_OFFSET + .95), 0]} 
+          rotation={[Math.PI / 2, 0, 0]}
+          raycast={noRaycast}
+        >
+            <shapeGeometry key={`shape-${positionsKey}`} args={[shape]} />
             <meshBasicMaterial color={color} transparent opacity={0.2} side={THREE.DoubleSide} />
         </mesh>
 
-        {/* Outline */}
-        <lineSegments position={[0, -(BASE_OFFSET + .94), 0]} rotation={[Math.PI / 2, 0, 0]}>
-             <primitive object={new THREE.WireframeGeometry(geometry)} attach="geometry" />
+        <lineLoop 
+            key={`line-${positionsKey}`}
+            position={[0, -(BASE_OFFSET + .94), 0]} 
+            rotation={[Math.PI / 2, 0, 0]}
+            raycast={noRaycast}
+        >
+             <bufferGeometry key={`buff-${positionsKey}`}>
+                <bufferAttribute
+                    attach="attributes-position"
+                    args={[new Float32Array(linePoints.flatMap(v => [v.x, v.y, v.z])), 3]}
+                />
+             </bufferGeometry>
              <lineBasicMaterial color={color} transparent opacity={0.6} />
-        </lineSegments>
+        </lineLoop>
         
-        {/* Label */}
         <Text
-            position={[centroid.x, -(BASE_OFFSET + 0.0), centroid.z]}
+            position={[centerX, -(BASE_OFFSET + 0.0), centerZ]}
             rotation={[-Math.PI / 2, 0, 0]} 
             fontSize={1.5}
             color="white"
@@ -162,56 +141,126 @@ const NamespaceZone: React.FC<ZoneProps> = ({ namespace, positions, color }) => 
             anchorY="middle"
             outlineWidth={0.1}
             outlineColor="black"
-            renderOrder={0} // Ensure it doesn't render on top of UI
+            renderOrder={0}
+            raycast={noRaycast}
         >
             {namespace}
         </Text>
     </group>
   );
-};
+}, (prevProps, nextProps) => {
+  // Only re-render if positionsKey changes - this is the stable key based on bounds
+  return prevProps.positionsKey === nextProps.positionsKey && 
+         prevProps.namespace === nextProps.namespace &&
+         prevProps.color === nextProps.color;
+});
 
-// Special key for cluster-scoped resources (no namespace)
 const CLUSTER_SCOPED_LABEL = 'Cluster';
+
+interface ZoneData {
+  key: string;
+  centerX: number;
+  centerZ: number;
+  hullPoints: [number, number][];
+}
 
 export const NamespaceProjections: React.FC<{ 
   resources: any;
   positionsRef: React.RefObject<Record<string, [number, number, number]>>;
 }> = ({ resources, positionsRef }) => {
-  const [groups, setGroups] = useState<Map<string, THREE.Vector3[]>>(new Map());
+  const [zones, setZones] = useState<Map<string, ZoneData>>(new Map());
   const lastUpdateRef = useRef(0);
+  // Cache previous position bounds to detect significant changes
+  const prevBoundsRef = useRef<Map<string, string>>(new Map());
 
   useFrame((state) => {
-    // Update every 0.2s (5 FPS) to save CPU
-    if (state.clock.elapsedTime - lastUpdateRef.current > 0.2) {
-      lastUpdateRef.current = state.clock.elapsedTime;
+    // Update every 0.5s to save CPU (was 0.2s)
+    if (state.clock.elapsedTime - lastUpdateRef.current < 0.5) return;
+    lastUpdateRef.current = state.clock.elapsedTime;
 
-      const map = new Map<string, THREE.Vector3[]>();
-      let hasData = false;
+    // Group resources by namespace using plain arrays (no THREE.Vector3)
+    const nsGroups = new Map<string, [number, number][]>();
+    
+    Object.values(resources as Record<string, any>).forEach((res: any) => {
+      const pos = positionsRef.current[res.id];
+      if (!pos) return;
       
-      Object.values(resources as Record<string, any>).forEach((res: any) => {
-        const pos = positionsRef.current[res.id];
-        if (!pos) return;
-        
-        // Use special label for cluster-scoped resources (no namespace)
-        const nsKey = res.namespace || CLUSTER_SCOPED_LABEL;
-        
-        if (!map.has(nsKey)) {
-          map.set(nsKey, []);
-        }
-        map.get(nsKey)!.push(new THREE.Vector3(pos[0], 0, pos[2]));
-        hasData = true;
+      const nsKey = res.namespace || CLUSTER_SCOPED_LABEL;
+      
+      if (!nsGroups.has(nsKey)) {
+        nsGroups.set(nsKey, []);
+      }
+      nsGroups.get(nsKey)!.push([pos[0], pos[2]]); // Store as [x, z] tuple
+    });
+    
+    // Check if anything changed significantly
+    let hasChanges = false;
+    const newBounds = new Map<string, string>();
+    
+    nsGroups.forEach((points, ns) => {
+      if (points.length === 0) return;
+      
+      // Calculate bounds signature
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      let sumX = 0, sumZ = 0;
+      points.forEach(p => {
+        sumX += p[0]; sumZ += p[1];
+        minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
+        minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]);
       });
       
-      if (hasData) {
-          setGroups(map);
+      // Create a key based on count and rough bounds (rounded to reduce jitter)
+      // Round to nearest 5 units to significantly reduce updates during physics stabilization
+      const ROUND_FACTOR = 5;
+      const boundsKey = `${points.length}-${Math.round(minX/ROUND_FACTOR)}-${Math.round(maxX/ROUND_FACTOR)}-${Math.round(minZ/ROUND_FACTOR)}-${Math.round(maxZ/ROUND_FACTOR)}`;
+      newBounds.set(ns, boundsKey);
+      
+      if (prevBoundsRef.current.get(ns) !== boundsKey) {
+        hasChanges = true;
       }
-    }
+    });
+    
+    // Also check for removed namespaces
+    prevBoundsRef.current.forEach((_, ns) => {
+      if (!newBounds.has(ns)) hasChanges = true;
+    });
+    
+    if (!hasChanges) return;
+    
+    prevBoundsRef.current = newBounds;
+    
+    // Compute hull data for changed zones
+    const newZones = new Map<string, ZoneData>();
+    
+    nsGroups.forEach((points, ns) => {
+      if (points.length === 0) return;
+      
+      // Calculate centroid
+      let centerX = 0, centerZ = 0;
+      points.forEach(p => { centerX += p[0]; centerZ += p[1]; });
+      centerX /= points.length;
+      centerZ /= points.length;
+      
+      // Ensure minimum points and compute hull
+      const expandedPoints = ensureMinimumPoints(points, MIN_HULL_POINTS);
+      const hullPoints = getConvexHull(expandedPoints);
+      
+      const boundsKey = newBounds.get(ns) || '';
+      
+      newZones.set(ns, {
+        key: boundsKey,
+        centerX,
+        centerZ,
+        hullPoints
+      });
+    });
+    
+    setZones(newZones);
   });
 
   const stringToColor = (str: string) => {
-    // Special color for cluster-scoped zone
     if (str === CLUSTER_SCOPED_LABEL) {
-      return '#64748b'; // Slate gray for cluster resources
+      return '#64748b';
     }
     
     let hash = 0;
@@ -219,16 +268,19 @@ export const NamespaceProjections: React.FC<{
         hash = str.charCodeAt(i) + ((hash << 5) - hash);
     }
     const h = Math.abs(hash) % 360;
-    return `hsl(${h}, 70%, 40%)`; // Slightly darker for ground visibility
+    return `hsl(${h}, 70%, 40%)`;
   };
 
   return (
     <group>
-      {Array.from(groups.entries()).map(([ns, resourcePositions]) => (
+      {Array.from(zones.entries()).map(([ns, data]) => (
         <NamespaceZone
           key={ns} 
-          namespace={ns} 
-          positions={resourcePositions} 
+          namespace={ns}
+          positionsKey={data.key}
+          centerX={data.centerX}
+          centerZ={data.centerZ}
+          hullPoints={data.hullPoints}
           color={stringToColor(ns)} 
         />
       ))}

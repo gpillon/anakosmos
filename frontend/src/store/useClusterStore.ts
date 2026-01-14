@@ -2,6 +2,27 @@ import { create } from 'zustand';
 import type { ClusterResource, ClusterLink } from '../api/types';
 import { KubeClient } from '../api/kubeClient';
 
+// Helper to check if resource has meaningfully changed
+function hasResourceChanged(oldRes: ClusterResource, newRes: ClusterResource): boolean {
+  // Check critical fields that affect display
+  if (oldRes.status !== newRes.status) return true;
+  if (oldRes.health !== newRes.health) return true;
+  if (oldRes.name !== newRes.name) return true;
+  if (oldRes.namespace !== newRes.namespace) return true;
+  // Check if ownerRefs changed (for link updates)
+  if (oldRes.ownerRefs.length !== newRes.ownerRefs.length) return true;
+  for (let i = 0; i < oldRes.ownerRefs.length; i++) {
+    if (oldRes.ownerRefs[i] !== newRes.ownerRefs[i]) return true;
+  }
+  // Check labels (shallow compare keys count, deep compare would be expensive)
+  const oldLabelsKeys = Object.keys(oldRes.labels || {});
+  const newLabelsKeys = Object.keys(newRes.labels || {});
+  if (oldLabelsKeys.length !== newLabelsKeys.length) return true;
+  // For pods, check nodeName
+  if (oldRes.nodeName !== newRes.nodeName) return true;
+  return false;
+}
+
 export type DemoResourceLevel = 'none' | 'node' | 'single-pod' | 'multi-pods' | 'workloads' | 'networking' | 'full';
 
 interface ClusterStore {
@@ -69,83 +90,68 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
 
   updateResource: (action, res) => {
     set(state => {
-        const newResources = { ...state.resources };
-        const newLinks = [...state.links];
-
         if (action === 'DELETED') {
+            const newResources = { ...state.resources };
             delete newResources[res.id];
             // Remove links connected to this resource
-            const filteredLinks = newLinks.filter(l => l.source !== res.id && l.target !== res.id);
+            const filteredLinks = state.links.filter(l => l.source !== res.id && l.target !== res.id);
             return { resources: newResources, links: filteredLinks };
         }
 
-        // ADDED or MODIFIED
+        const oldRes = state.resources[res.id];
         
-        // Preserve raw data if missing in update (because backend sends simplified object)
-        const oldRes = newResources[res.id];
-        if (oldRes && oldRes.raw && !res.raw) {
-            res.raw = oldRes.raw;
+        // For ADDED events, skip if resource already exists (prevents duplicates from watcher initial sync)
+        if (action === 'ADDED' && oldRes) {
+            return state;
         }
 
-        newResources[res.id] = res;
+        // For MODIFIED events, check if anything meaningful changed to avoid unnecessary re-renders
+        if (action === 'MODIFIED' && oldRes && !hasResourceChanged(oldRes, res)) {
+            return state; // Nothing changed, skip update
+        }
 
-        // Filter out old outgoing owner/network links for this resource (preserve config/storage)
-        const keptLinks = newLinks.filter(l => {
-            if (l.source !== res.id) return true;
-            // Keep config and storage links - they're set at initial load and rarely change
-            if (l.type === 'config' || l.type === 'storage') return true;
-            return false;
-        });
-        
-        // Add new owner links
-        res.ownerRefs.forEach(ownerId => {
-            keptLinks.push({ source: res.id, target: ownerId, type: 'owner' });
-        });
+        // Preserve data from old resource that isn't sent by WebSocket
+        if (oldRes) {
+            if (oldRes.raw && !res.raw) res.raw = oldRes.raw;
+            if (oldRes.helmRelease && !res.helmRelease) res.helmRelease = oldRes.helmRelease;
+            if (oldRes.argoApp && !res.argoApp) res.argoApp = oldRes.argoApp;
+        }
 
-        // SPECIAL HANDLING FOR POD -> NODE LINKS
-        if (res.kind === 'Pod' && (res as any).nodeName) {
-            const nodeName = (res as any).nodeName;
-            // Find Node UID by name
-            const node = Object.values(newResources).find(r => r.kind === 'Node' && r.name === nodeName);
-            if (node) {
-                 keptLinks.push({ source: res.id, target: node.id, type: 'owner' });
+        // Only update the single resource, don't recreate entire object if possible
+        const newResources = { ...state.resources, [res.id]: res };
+
+        // Only update links if ownerRefs changed (for new resources or changed ownership)
+        let newLinks = state.links;
+        const ownerRefsChanged = !oldRes || 
+            oldRes.ownerRefs.length !== res.ownerRefs.length ||
+            oldRes.ownerRefs.some((ref, i) => ref !== res.ownerRefs[i]) ||
+            (res.kind === 'Pod' && oldRes?.nodeName !== (res as any).nodeName);
+
+        if (ownerRefsChanged) {
+            // Filter out old owner links for this resource only
+            newLinks = state.links.filter(l => 
+                l.source !== res.id || l.type === 'config' || l.type === 'storage' || l.type === 'network'
+            );
+            
+            // Add new owner links
+            res.ownerRefs.forEach(ownerId => {
+                newLinks.push({ source: res.id, target: ownerId, type: 'owner' });
+            });
+
+            // Pod -> Node link
+            if (res.kind === 'Pod' && (res as any).nodeName) {
+                const node = Object.values(newResources).find(r => r.kind === 'Node' && r.name === (res as any).nodeName);
+                if (node) {
+                    newLinks.push({ source: res.id, target: node.id, type: 'owner' });
+                }
             }
         }
-
-        // SPECIAL HANDLING FOR SERVICE -> POD LINKS (Network)
-        // 1. If this is a Service, find matching Pods
-        if (res.kind === 'Service' && res.raw?.spec?.selector) {
-            Object.values(newResources).forEach(r => {
-                if (r.kind === 'Pod' && r.namespace === res.namespace) {
-                    const match = Object.entries(res.raw.spec.selector).every(([k, v]) => r.labels[k as string] === v);
-                    if (match) {
-                        keptLinks.push({ source: res.id, target: r.id, type: 'network' });
-                    }
-                }
-            });
-        }
-
-        // 2. If this is a Pod, update incoming Service links
-        if (res.kind === 'Pod') {
-             // Remove incoming network links for this Pod (to avoid stale links if labels changed)
-             for (let i = keptLinks.length - 1; i >= 0; i--) {
-                if (keptLinks[i].target === res.id && keptLinks[i].type === 'network') {
-                    keptLinks.splice(i, 1);
-                }
-             }
-
-             // Find Services that should link to this Pod
-             Object.values(newResources).forEach(r => {
-                 if (r.kind === 'Service' && r.namespace === res.namespace && r.raw?.spec?.selector) {
-                      const match = Object.entries(r.raw.spec.selector).every(([k, v]) => res.labels[k as string] === v);
-                      if (match) {
-                          keptLinks.push({ source: r.id, target: res.id, type: 'network' });
-                      }
-                 }
-             });
-        }
         
-        return { resources: newResources, links: keptLinks };
+        // NOTE: Service->Pod network links are NOT recalculated here anymore
+        // They are pre-calculated in /api/cluster/init and remain stable
+        // This saves O(n) iterations per update event
+        
+        return { resources: newResources, links: newLinks };
     });
   },
 

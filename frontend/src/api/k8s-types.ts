@@ -15,6 +15,12 @@ export type {
   V1Condition,
 } from '@kubernetes/client-node';
 
+// Import for local use in interfaces
+import type { V1ObjectMeta as V1ObjectMetaType } from '@kubernetes/client-node';
+
+// Type alias for local use
+type V1ObjectMetaLocal = V1ObjectMetaType;
+
 // Pod types
 export type {
   V1Pod,
@@ -188,6 +194,257 @@ export type {
 
 // Also export KubernetesObject for generic handling
 export type { KubernetesObject, KubernetesListObject } from '@kubernetes/client-node';
+
+// ============================================
+// ArgoCD Types (Custom Resource Definitions)
+// ============================================
+
+/**
+ * ArgoCD Application resource
+ * API Group: argoproj.io/v1alpha1
+ */
+export interface ArgoApplication {
+  apiVersion: 'argoproj.io/v1alpha1';
+  kind: 'Application';
+  metadata: V1ObjectMetaLocal;
+  spec: ArgoApplicationSpec;
+  status?: ArgoApplicationStatusFull;
+  operation?: ArgoOperation;
+}
+
+export interface ArgoApplicationSpec {
+  project: string;
+  source?: ArgoSource;
+  sources?: ArgoSource[];
+  destination: ArgoDestination;
+  syncPolicy?: ArgoSyncPolicy;
+  ignoreDifferences?: ArgoResourceIgnoreDifferences[];
+  info?: Array<{ name: string; value: string }>;
+  revisionHistoryLimit?: number;
+}
+
+export interface ArgoSource {
+  repoURL: string;
+  path?: string;
+  targetRevision?: string;
+  chart?: string;
+  ref?: string;
+  helm?: ArgoHelmSource;
+  kustomize?: ArgoKustomizeSource;
+  directory?: ArgoDirectorySource;
+  plugin?: ArgoPluginSource;
+}
+
+export interface ArgoHelmSource {
+  releaseName?: string;
+  valueFiles?: string[];
+  values?: string;
+  parameters?: Array<{
+    name: string;
+    value: string;
+    forceString?: boolean;
+  }>;
+  fileParameters?: Array<{
+    name: string;
+    path: string;
+  }>;
+  passCredentials?: boolean;
+  ignoreMissingValueFiles?: boolean;
+  skipCrds?: boolean;
+  version?: string;
+}
+
+export interface ArgoKustomizeSource {
+  namePrefix?: string;
+  nameSuffix?: string;
+  images?: string[];
+  commonLabels?: Record<string, string>;
+  commonAnnotations?: Record<string, string>;
+  forceCommonLabels?: boolean;
+  forceCommonAnnotations?: boolean;
+  version?: string;
+  patches?: Array<{
+    path?: string;
+    patch?: string;
+    target?: {
+      group?: string;
+      version?: string;
+      kind?: string;
+      name?: string;
+      namespace?: string;
+      labelSelector?: string;
+      annotationSelector?: string;
+    };
+  }>;
+}
+
+export interface ArgoDirectorySource {
+  recurse?: boolean;
+  jsonnet?: {
+    extVars?: Array<{ name: string; value: string; code?: boolean }>;
+    tlas?: Array<{ name: string; value: string; code?: boolean }>;
+    libs?: string[];
+  };
+  exclude?: string;
+  include?: string;
+}
+
+export interface ArgoPluginSource {
+  name?: string;
+  env?: Array<{ name: string; value: string }>;
+  parameters?: Array<{
+    name?: string;
+    string?: string;
+    array?: string[];
+    map?: Record<string, string>;
+  }>;
+}
+
+export interface ArgoDestination {
+  server?: string;
+  namespace?: string;
+  name?: string;
+}
+
+export interface ArgoSyncPolicy {
+  automated?: {
+    prune?: boolean;
+    selfHeal?: boolean;
+    allowEmpty?: boolean;
+  };
+  syncOptions?: string[];
+  retry?: {
+    limit?: number;
+    backoff?: {
+      duration?: string;
+      factor?: number;
+      maxDuration?: string;
+    };
+  };
+  managedNamespaceMetadata?: {
+    labels?: Record<string, string>;
+    annotations?: Record<string, string>;
+  };
+}
+
+export interface ArgoResourceIgnoreDifferences {
+  group?: string;
+  kind: string;
+  name?: string;
+  namespace?: string;
+  jsonPointers?: string[];
+  jqPathExpressions?: string[];
+  managedFieldsManagers?: string[];
+}
+
+export interface ArgoApplicationStatusFull {
+  sync: {
+    status: 'Synced' | 'OutOfSync' | 'Unknown';
+    revision?: string;
+    comparedTo?: {
+      source?: ArgoSource;
+      sources?: ArgoSource[];
+      destination: ArgoDestination;
+    };
+  };
+  health: {
+    status: 'Healthy' | 'Progressing' | 'Degraded' | 'Suspended' | 'Missing' | 'Unknown';
+    message?: string;
+  };
+  operationState?: {
+    phase: 'Running' | 'Succeeded' | 'Failed' | 'Error' | 'Terminating';
+    message?: string;
+    syncResult?: {
+      revision: string;
+      source?: ArgoSource;
+      sources?: ArgoSource[];
+      resources?: ArgoManagedResource[];
+    };
+    startedAt?: string;
+    finishedAt?: string;
+    retryCount?: number;
+  };
+  conditions?: ArgoApplicationCondition[];
+  resources?: ArgoManagedResource[];
+  reconciledAt?: string;
+  sourceType?: string;
+  sourceTypes?: string[];
+  summary?: {
+    images?: string[];
+    externalURLs?: string[];
+  };
+  history?: ArgoRevisionHistory[];
+  controllerNamespace?: string;
+}
+
+export interface ArgoManagedResource {
+  group?: string;
+  version: string;
+  kind: string;
+  namespace?: string;
+  name: string;
+  status?: 'Synced' | 'OutOfSync' | 'Unknown';
+  health?: {
+    status: string;
+    message?: string;
+  };
+  hook?: boolean;
+  requiresPruning?: boolean;
+}
+
+export interface ArgoApplicationCondition {
+  type: string;
+  message: string;
+  lastTransitionTime?: string;
+}
+
+export interface ArgoRevisionHistory {
+  revision: string;
+  deployedAt: string;
+  id: number;
+  source?: ArgoSource;
+  sources?: ArgoSource[];
+  deployStartedAt?: string;
+  initiatedBy?: {
+    username?: string;
+    automated?: boolean;
+  };
+}
+
+export interface ArgoOperation {
+  sync?: {
+    revision?: string;
+    prune?: boolean;
+    dryRun?: boolean;
+    syncStrategy?: {
+      apply?: { force?: boolean };
+      hook?: { force?: boolean };
+    };
+    resources?: Array<{
+      group?: string;
+      kind: string;
+      name: string;
+      namespace?: string;
+    }>;
+    source?: ArgoSource;
+    sources?: ArgoSource[];
+    manifests?: string[];
+    syncOptions?: string[];
+  };
+  initiatedBy?: {
+    username?: string;
+    automated?: boolean;
+  };
+  info?: Array<{ name: string; value: string }>;
+  retry?: {
+    limit?: number;
+    backoff?: {
+      duration?: string;
+      factor?: number;
+      maxDuration?: string;
+    };
+  };
+}
 
 
 // ============================================
