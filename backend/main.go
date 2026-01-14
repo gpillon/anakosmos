@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/anakosmos/backend/src/api"
+	"github.com/anakosmos/backend/src/helm"
 	"github.com/anakosmos/backend/src/k8s"
 
 	"k8s.io/client-go/rest"
@@ -109,10 +110,56 @@ func main() {
 		k8s.HandleSingleWatch(watchConfig, w, r)
 	})
 
+	// Cluster Init Handler - returns all resources in lightweight format with pre-calculated links
+	http.HandleFunc("/api/cluster/init", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		var initConfig *rest.Config
+		if targetUrl != "" {
+			initConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			initConfig = config
+		}
+
+		if initConfig == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return
+		}
+		k8s.HandleInit(initConfig, w, r)
+	})
+
+	// Helm Handler - MUST be registered BEFORE /api/ catch-all
+	http.HandleFunc("/api/helm/", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		var helmConfig *rest.Config
+		if targetUrl != "" {
+			helmConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			helmConfig = config
+		}
+
+		if helmConfig == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return
+		}
+		helm.HandleHelmRequest(helmConfig, w, r)
+	})
+
 	// Custom Proxy Handler (Dynamic Target)
 	http.HandleFunc("/proxy/", api.ProxyHandler())
 
-	// Internal Proxy (Using local kubeconfig)
+	// Internal Proxy (Using local kubeconfig) - This is a catch-all, must be last
 	http.HandleFunc("/api/", api.InternalProxyHandler(config))
 
 	// Serve Frontend or Proxy to Dev Server

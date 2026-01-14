@@ -11,7 +11,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
@@ -25,19 +28,25 @@ type WatchEvent struct {
 
 // WatchManager handles the lifecycle of watchers for a single connection
 type WatchManager struct {
-	client    *kubernetes.Clientset
-	ws        *websocket.Conn
-	done      chan struct{}
-	eventChan chan WatchEvent
-	wg        sync.WaitGroup
+	client        *kubernetes.Clientset
+	dynamicClient dynamic.Interface
+	ws            *websocket.Conn
+	done          chan struct{}
+	eventChan     chan WatchEvent
+	wg            sync.WaitGroup
+	// Deduplication: track last sent state per resource to skip no-op MODIFIED events
+	lastSent   map[string]string // resourceUID -> "status|health"
+	lastSentMu sync.RWMutex
 }
 
-func NewWatchManager(client *kubernetes.Clientset, ws *websocket.Conn) *WatchManager {
+func NewWatchManager(client *kubernetes.Clientset, dynamicClient dynamic.Interface, ws *websocket.Conn) *WatchManager {
 	return &WatchManager{
-		client:    client,
-		ws:        ws,
-		done:      make(chan struct{}),
-		eventChan: make(chan WatchEvent, 100),
+		client:        client,
+		dynamicClient: dynamicClient,
+		ws:            ws,
+		done:          make(chan struct{}),
+		eventChan:     make(chan WatchEvent, 100),
+		lastSent:      make(map[string]string),
 	}
 }
 
@@ -50,6 +59,10 @@ func (wm *WatchManager) Start() {
 	wm.watchResource("daemonsets")
 	wm.watchResource("replicasets")
 	wm.watchResource("ingresses")
+	// ArgoCD Applications (CRD) - watch if available
+	if wm.dynamicClient != nil {
+		wm.watchCRD("applications", "argoproj.io", "v1alpha1", "Application")
+	}
 	go wm.sendLoop()
 }
 
@@ -127,7 +140,7 @@ func (wm *WatchManager) watchResource(resource string) {
 
 			if err != nil {
 				log.Printf("Failed to watch %s: %v. Retrying in 5s...", resource, err)
-				
+
 				// Check for done before sleeping
 				select {
 				case <-wm.done:
@@ -137,8 +150,8 @@ func (wm *WatchManager) watchResource(resource string) {
 				}
 			}
 			wm.handleWatchStream(watcher, kind)
-			
-			// If handleWatchStream returns, it means the watcher closed. 
+
+			// If handleWatchStream returns, it means the watcher closed.
 			// We should wait a bit before reconnecting to avoid tight loops on error.
 			select {
 			case <-wm.done:
@@ -148,6 +161,223 @@ func (wm *WatchManager) watchResource(resource string) {
 			}
 		}
 	}()
+}
+
+// watchCRD watches a Custom Resource Definition using the dynamic client
+func (wm *WatchManager) watchCRD(resource, group, version, kind string) {
+	if wm.dynamicClient == nil {
+		return
+	}
+
+	wm.wg.Add(1)
+	go func() {
+		defer wm.wg.Done()
+
+		gvr := schema.GroupVersionResource{
+			Group:    group,
+			Version:  version,
+			Resource: resource,
+		}
+
+		for {
+			select {
+			case <-wm.done:
+				return
+			default:
+			}
+
+			ctx := context.Background()
+			listOpts := metav1.ListOptions{}
+
+			watcher, err := wm.dynamicClient.Resource(gvr).Namespace("").Watch(ctx, listOpts)
+			if err != nil {
+				// CRD might not exist, just retry less frequently
+				log.Printf("Failed to watch CRD %s.%s: %v. Retrying in 30s...", resource, group, err)
+				select {
+				case <-wm.done:
+					return
+				case <-time.After(30 * time.Second):
+					continue
+				}
+			}
+
+			wm.handleDynamicWatchStream(watcher, kind)
+
+			select {
+			case <-wm.done:
+				return
+			case <-time.After(1 * time.Second):
+				// Reconnect
+			}
+		}
+	}()
+}
+
+// handleDynamicWatchStream processes events from a dynamic (CRD) watcher
+func (wm *WatchManager) handleDynamicWatchStream(watcher watch.Interface, kind string) {
+	if watcher == nil {
+		return
+	}
+	defer watcher.Stop()
+
+	ch := watcher.ResultChan()
+	for {
+		select {
+		case <-wm.done:
+			return
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			if event.Type == watch.Error {
+				log.Printf("Watch error for CRD %s: %v", kind, event.Object)
+				return
+			}
+
+			unstructuredObj, ok := event.Object.(*unstructured.Unstructured)
+			if !ok {
+				continue
+			}
+
+			simpleObj := wm.simplifyCRDObject(unstructuredObj, kind)
+			if simpleObj == nil {
+				continue
+			}
+
+			// Deduplication for CRD events
+			if event.Type == watch.Modified {
+				objMap, ok := simpleObj.(map[string]interface{})
+				if ok {
+					uid, _ := objMap["id"].(string)
+					status, _ := objMap["status"].(string)
+					health, _ := objMap["health"].(string)
+					stateKey := status + "|" + health
+
+					wm.lastSentMu.RLock()
+					lastState := wm.lastSent[uid]
+					wm.lastSentMu.RUnlock()
+
+					if lastState == stateKey {
+						continue
+					}
+
+					wm.lastSentMu.Lock()
+					wm.lastSent[uid] = stateKey
+					wm.lastSentMu.Unlock()
+				}
+			} else if event.Type == watch.Deleted {
+				objMap, ok := simpleObj.(map[string]interface{})
+				if ok {
+					uid, _ := objMap["id"].(string)
+					wm.lastSentMu.Lock()
+					delete(wm.lastSent, uid)
+					wm.lastSentMu.Unlock()
+				}
+			}
+
+			select {
+			case wm.eventChan <- WatchEvent{Type: string(event.Type), Kind: kind, Resource: simpleObj}:
+			case <-wm.done:
+				return
+			}
+		}
+	}
+}
+
+// simplifyCRDObject converts an unstructured CRD object to a simple map for the frontend
+func (wm *WatchManager) simplifyCRDObject(obj *unstructured.Unstructured, kind string) interface{} {
+	metadata := obj.Object["metadata"].(map[string]interface{})
+
+	uid := getNestedString(metadata, "uid")
+	name := getNestedString(metadata, "name")
+	namespace := getNestedString(metadata, "namespace")
+	creationTimestamp := getNestedString(metadata, "creationTimestamp")
+	labels, _ := metadata["labels"].(map[string]interface{})
+
+	// Convert labels to string map
+	labelsMap := make(map[string]string)
+	for k, v := range labels {
+		if vs, ok := v.(string); ok {
+			labelsMap[k] = vs
+		}
+	}
+
+	// Get owner references
+	ownerRefs := make([]string, 0)
+	if refs, ok := metadata["ownerReferences"].([]interface{}); ok {
+		for _, ref := range refs {
+			if refMap, ok := ref.(map[string]interface{}); ok {
+				if refUID, ok := refMap["uid"].(string); ok {
+					ownerRefs = append(ownerRefs, refUID)
+				}
+			}
+		}
+	}
+
+	// Determine status based on kind
+	status := "Unknown"
+	health := "ok"
+
+	if kind == "Application" {
+		// ArgoCD Application specific status
+		statusObj, _ := obj.Object["status"].(map[string]interface{})
+		if statusObj != nil {
+			// Sync status
+			if sync, ok := statusObj["sync"].(map[string]interface{}); ok {
+				if syncStatus, ok := sync["status"].(string); ok {
+					status = syncStatus
+				}
+			}
+			// Health status
+			if healthObj, ok := statusObj["health"].(map[string]interface{}); ok {
+				if healthStatus, ok := healthObj["status"].(string); ok {
+					switch healthStatus {
+					case "Degraded", "Missing":
+						health = "error"
+					case "Progressing", "Suspended":
+						health = "warning"
+					case "Healthy":
+						health = "ok"
+					default:
+						health = "warning"
+					}
+				}
+			}
+		}
+	}
+
+	result := map[string]interface{}{
+		"id":                uid,
+		"name":              name,
+		"namespace":         namespace,
+		"kind":              kind,
+		"status":            status,
+		"health":            health,
+		"labels":            labelsMap,
+		"ownerRefs":         ownerRefs,
+		"creationTimestamp": creationTimestamp,
+	}
+
+	return result
+}
+
+// getNestedString safely gets a string from a nested map
+func getNestedString(obj map[string]interface{}, keys ...string) string {
+	current := obj
+	for i, key := range keys {
+		if i == len(keys)-1 {
+			if val, ok := current[key].(string); ok {
+				return val
+			}
+			return ""
+		}
+		if next, ok := current[key].(map[string]interface{}); ok {
+			current = next
+		} else {
+			return ""
+		}
+	}
+	return ""
 }
 
 func (wm *WatchManager) handleWatchStream(watcher watch.Interface, kind string) {
@@ -163,19 +393,51 @@ func (wm *WatchManager) handleWatchStream(watcher watch.Interface, kind string) 
 			return
 		case event, ok := <-ch:
 			if !ok {
-				// Channel closed
 				return
 			}
 			if event.Type == watch.Error {
 				log.Printf("Watch error for %s: %v", kind, event.Object)
-				// Don't return immediately on error event, but maybe log it?
-				// Usually Error event means we need to restart watch (e.g. resource version too old)
-				return 
+				return
 			}
 			simpleObj := wm.simplifyObject(event.Object)
 			if simpleObj == nil {
 				continue
 			}
+
+			// Deduplication: for MODIFIED events, skip if nothing meaningful changed
+			if event.Type == watch.Modified {
+				objMap, ok := simpleObj.(map[string]interface{})
+				if ok {
+					uid, _ := objMap["id"].(string)
+					status, _ := objMap["status"].(string)
+					health, _ := objMap["health"].(string)
+					stateKey := status + "|" + health
+
+					wm.lastSentMu.RLock()
+					lastState := wm.lastSent[uid]
+					wm.lastSentMu.RUnlock()
+
+					if lastState == stateKey {
+						// State hasn't changed, skip this MODIFIED event
+						continue
+					}
+
+					// Update last sent state
+					wm.lastSentMu.Lock()
+					wm.lastSent[uid] = stateKey
+					wm.lastSentMu.Unlock()
+				}
+			} else if event.Type == watch.Deleted {
+				// Clean up tracking on delete
+				objMap, ok := simpleObj.(map[string]interface{})
+				if ok {
+					uid, _ := objMap["id"].(string)
+					wm.lastSentMu.Lock()
+					delete(wm.lastSent, uid)
+					wm.lastSentMu.Unlock()
+				}
+			}
+
 			select {
 			case wm.eventChan <- WatchEvent{Type: string(event.Type), Kind: kind, Resource: simpleObj}:
 			case <-wm.done:
@@ -196,7 +458,7 @@ func (wm *WatchManager) simplifyObject(obj interface{}) interface{} {
 		meta = o
 		kind = "Pod"
 		status = string(o.Status.Phase)
-		
+
 		// Calculate Health
 		if o.Status.Phase == corev1.PodFailed {
 			health = "error"
@@ -316,6 +578,13 @@ func HandleWatch(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create dynamic client for CRD watching
+	dynamicClient, err := dynamic.NewForConfig(config)
+	if err != nil {
+		log.Printf("Failed to create dynamic client: %v (CRD watching disabled)", err)
+		// Don't fail, just continue without dynamic client
+	}
+
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println("Watch upgrade error:", err)
@@ -323,7 +592,7 @@ func HandleWatch(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 
-	manager := NewWatchManager(clientset, ws)
+	manager := NewWatchManager(clientset, dynamicClient, ws)
 	manager.Start()
 	defer manager.Stop()
 
