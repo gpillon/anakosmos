@@ -7,10 +7,6 @@ metadata:
   labels:
     {{- include "anakosmos.labels" . | nindent 4 }}
 rules:
-  - nonResourceURLs:
-    - /cluster/init
-    verbs:
-    - get
   - apiGroups: [""]
     resources:
       - namespaces

@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useMemo, useCallback, useLayoutEffect } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Grid, Environment, CameraControls, Html, Stars } from '@react-three/drei';
+import CameraControlsImpl from 'camera-controls';
 import { EffectComposer, Bloom, Vignette, Noise } from '@react-three/postprocessing';
 import { BlendFunction } from 'postprocessing';
 import * as THREE from 'three';
@@ -50,16 +51,30 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
 
   useEffect(() => {
     if (!controlsRef.current) return;
-      // Helper to normalize azimuth angle to be within [0, 2PI]
-      // This prevents the camera from "unwinding" large accumulated rotations
-      const normalizeRotation = () => {
-          const azimuth = controlsRef.current!.azimuthAngle;
-          const normalizedAzimuth = ((azimuth % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-          // Only reset if significantly different to avoid jitter (e.g. > 1 degree off)
-          if (Math.abs(azimuth - normalizedAzimuth) > 0.01) {
-              const polar = controlsRef.current!.polarAngle;
-              // Snap immediately without transition
-              controlsRef.current!.rotateTo(normalizedAzimuth, polar, false);
+      // Helper to ensure shortest rotation path to target
+      // This prevents the camera from rotating > 180 degrees during transitions
+      const optimizePath = (destPos: THREE.Vector3, destTarget: THREE.Vector3) => {
+          const dx = destPos.x - destTarget.x;
+          const dz = destPos.z - destTarget.z;
+          // atan2(x, z) matches THREE/CameraControls convention for azimuth
+          const targetAzimuth = Math.atan2(dx, dz);
+          
+          const currentAzimuth = controlsRef.current!.azimuthAngle;
+          const TWO_PI = 2 * Math.PI;
+          
+          // Calculate minimal delta in range [-PI, PI]
+          let delta = (targetAzimuth - currentAzimuth) % TWO_PI;
+          if (delta > Math.PI) delta -= TWO_PI;
+          if (delta < -Math.PI) delta += TWO_PI;
+          
+          // We want to start from an azimuth that is within [-PI, PI] of the target
+          // So we adjust the current azimuth to be 'target - delta'
+          // This ensures the interpolation goes through the shortest path (delta)
+          const optimizedStart = targetAzimuth - delta;
+
+          // Apply adjustment if significantly different from current representation
+          if (Math.abs(optimizedStart - currentAzimuth) > 0.001) {
+              controlsRef.current!.rotateTo(optimizedStart, controlsRef.current!.polarAngle, false);
           }
       };
 
@@ -69,18 +84,22 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
           setLastTarget(controlsRef.current.getTarget(new THREE.Vector3()));
         }
         const [x, y, z] = selectedPos;
-
-        // Normalize rotation before starting the transition
-        normalizeRotation();
+        
+        // Target configuration
+        const targetPos = new THREE.Vector3(x + 8, Math.max(y + 8, 10), z + 8);
+        const targetLookAt = new THREE.Vector3(x, y, z);
+        
+        // Snap current angle to closest equivalent relative to target
+        optimizePath(targetPos, targetLookAt);
 
         controlsRef.current.setLookAt(
-          x + 8, Math.max(y + 8, 10), z + 8,
-          x, y, z,
+          targetPos.x, targetPos.y, targetPos.z,
+          targetLookAt.x, targetLookAt.y, targetLookAt.z,
           true
         );
       } else if (lastPos && lastTarget) {
-        // Normalize rotation before starting the transition
-        normalizeRotation();
+        // Snap current angle to closest equivalent relative to target
+        optimizePath(lastPos, lastTarget);
 
         controlsRef.current.setLookAt(
           lastPos.x, lastPos.y, lastPos.z,
@@ -100,6 +119,12 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
     minDistance={10} 
     maxDistance={500} 
     dollyToCursor={true} 
+    mouseButtons={{
+      left: CameraControlsImpl.ACTION.TRUCK,
+      middle: CameraControlsImpl.ACTION.DOLLY,
+      right: CameraControlsImpl.ACTION.ROTATE,
+      wheel: CameraControlsImpl.ACTION.DOLLY
+    }}
   />;
 };
 

@@ -508,7 +508,10 @@ func (wm *WatchManager) simplifyObject(obj interface{}) interface{} {
 	case *appsv1.Deployment:
 		meta = o
 		kind = "Deployment"
-		if o.Status.AvailableReplicas == o.Status.Replicas {
+		if o.Spec.Replicas != nil && *o.Spec.Replicas == 0 {
+			status = "ScaledDown"
+			health = "ok"
+		} else if o.Status.AvailableReplicas == o.Status.Replicas {
 			status = "Available"
 		} else {
 			status = "Progressing"

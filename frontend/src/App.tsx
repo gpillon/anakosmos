@@ -1,6 +1,6 @@
 import { ClusterScene } from './scene/ClusterScene';
 import { HUD } from './ui/HUD';
-import { Sidebar } from './ui/Sidebar';
+import { Sidebar } from './ui/sidebar/Sidebar';
 import { ViewSelector } from './ui/ViewSelector';
 import { ConnectionScreen } from './ui/ConnectionScreen';
 import { ResourceLegend } from './ui/ResourceLegend';

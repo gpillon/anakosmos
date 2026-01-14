@@ -611,7 +611,10 @@ func HandleInit(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 		for _, d := range deployments.Items {
 			status := "Progressing"
 			health := "warning"
-			if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
+			if d.Spec.Replicas != nil && *d.Spec.Replicas == 0 {
+				status = "ScaledDown"
+				health = "ok"
+			} else if d.Status.AvailableReplicas == d.Status.Replicas && d.Status.Replicas > 0 {
 				status = "Available"
 				health = "ok"
 			}
