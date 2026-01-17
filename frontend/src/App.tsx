@@ -11,6 +11,7 @@ import { OnboardingTutorial } from './ui/onboarding';
 
 import { TerminalWindow } from './ui/TerminalWindow';
 import { ResourceDetailsWindow } from './ui/ResourceDetailsWindow';
+import { ResourceCreationHub } from './ui/resourceCreation';
 
 function App() {
   useKeyboardShortcuts();
@@ -30,6 +31,7 @@ function App() {
       <Sidebar />
       <TerminalWindow />
       <ResourceDetailsWindow />
+      <ResourceCreationHub />
       <OnboardingTutorial />
     </div>
   );

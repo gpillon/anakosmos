@@ -4,7 +4,7 @@ import type { V2HorizontalPodAutoscaler } from '../../../api/k8s-types';
 import { HPAOverview } from './tabs/HPAOverview';
 import { HPAMetrics } from './tabs/HPAMetrics';
 import { HPABehavior } from './tabs/HPABehavior';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface HPAViewProps {
   resource: ClusterResource;
@@ -20,19 +20,28 @@ export const hpaTabs = [
 
 export const HPAView: React.FC<HPAViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V2HorizontalPodAutoscaler>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V2HorizontalPodAutoscaler>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -50,10 +59,36 @@ export const HPAView: React.FC<HPAViewProps> = ({ resource, activeTab }) => {
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <HPAOverview key={resourceKey} resource={fullResource} hpa={rawData!} onApply={applyChanges} />}
-      {activeTab === 'metrics' && <HPAMetrics key={resourceKey} hpa={rawData!} onApply={applyChanges} />}
-      {activeTab === 'behavior' && <HPABehavior key={resourceKey} hpa={rawData!} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <HPAOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'metrics' && model && (
+        <HPAMetrics 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'behavior' && model && (
+        <HPABehavior 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

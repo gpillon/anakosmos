@@ -29,7 +29,7 @@ interface KeyValueDataCardProps {
   /** Whether editing is enabled */
   editable?: boolean;
   /** Callback when data changes */
-  onUpdate?: (data: Record<string, string>) => Promise<void>;
+  onUpdate?: (data: Record<string, string>) => void | Promise<void>;
   /** Empty state message */
   emptyMessage?: string;
 }

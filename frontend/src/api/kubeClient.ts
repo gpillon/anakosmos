@@ -1153,6 +1153,140 @@ export class KubeClient {
     }
   }
 
+  // ==========================================
+  // Resource Creation Methods
+  // ==========================================
+
+  async applyYamlBatch(yamlContent: string, defaultNamespace: string): Promise<{ applied: number; results: any[] }> {
+    const params = new URLSearchParams();
+    if (defaultNamespace) params.set('defaultNamespace', defaultNamespace);
+
+    if (this.mode === 'custom') {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      params.set('target', cleanBase);
+      if (this.token && this.token.trim().length > 0) {
+        params.set('token', this.token.trim());
+      }
+    }
+
+    const url = `/api/resources/apply-yaml?${params.toString()}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml: yamlContent, defaultNamespace })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new ApiError(`Apply failed: ${res.status}`, res.status, errText);
+    }
+
+    return await res.json();
+  }
+
+  async installHelmFromRepo(params: {
+    namespace: string;
+    releaseName: string;
+    repoUrl: string;
+    chart: string;
+    version?: string;
+    valuesYaml?: string;
+  }): Promise<any> {
+    const query = new URLSearchParams({
+      namespace: params.namespace,
+      name: params.releaseName
+    });
+
+    if (this.mode === 'custom') {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      query.set('target', cleanBase);
+      if (this.token && this.token.trim().length > 0) {
+        query.set('token', this.token.trim());
+      }
+    }
+
+    const url = `/api/helm/install?${query.toString()}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        repoUrl: params.repoUrl,
+        chart: params.chart,
+        version: params.version,
+        valuesYaml: params.valuesYaml
+      })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new ApiError(`Helm install failed: ${res.status}`, res.status, errText);
+    }
+
+    return await res.json();
+  }
+
+  async installHelmFromUpload(params: {
+    namespace: string;
+    releaseName: string;
+    chartFile: File;
+    valuesYaml?: string;
+  }): Promise<any> {
+    const query = new URLSearchParams({
+      namespace: params.namespace,
+      name: params.releaseName
+    });
+
+    if (this.mode === 'custom') {
+      const cleanBase = this.baseUrl.replace(/\/+$/, '');
+      query.set('target', cleanBase);
+      if (this.token && this.token.trim().length > 0) {
+        query.set('token', this.token.trim());
+      }
+    }
+
+    const url = `/api/helm/install?${query.toString()}`;
+    const formData = new FormData();
+    formData.append('chart', params.chartFile);
+    if (params.valuesYaml) {
+      formData.append('valuesYaml', params.valuesYaml);
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new ApiError(`Helm install failed: ${res.status}`, res.status, errText);
+    }
+
+    return await res.json();
+  }
+
+  async fetchHelmRepoIndex(repoUrl: string): Promise<{ charts: Array<{ name: string; versions: string[]; latest: string }> }> {
+    const query = new URLSearchParams({ repoUrl });
+    const url = `/api/helm/repo-index?${query.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new ApiError(`Failed to fetch repo index: ${res.status}`, res.status, errText);
+    }
+    return await res.json();
+  }
+
+  async fetchHelmChartValues(repoUrl: string, chart: string, version?: string): Promise<{ valuesYaml: string; version: string }> {
+    const query = new URLSearchParams({ repoUrl, chart });
+    if (version) query.set('version', version);
+    const url = `/api/helm/chart-values?${query.toString()}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new ApiError(`Failed to fetch chart values: ${res.status}`, res.status, errText);
+    }
+    return await res.json();
+  }
+
   /**
    * Extract chart version from chart label (e.g., "nginx-1.2.3" -> "1.2.3")
    */

@@ -1,92 +1,65 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { ClusterResource } from '../../../../api/types';
+import type { V1Deployment } from '../../../../api/k8s-types';
 import { 
   Globe, 
   Plus, 
   Trash2, 
   Server,
-  Network,
-  Save,
-  RefreshCw,
-  AlertCircle
+  Network
 } from 'lucide-react';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
+  model: V1Deployment;
+  updateModel: (updater: (current: V1Deployment) => V1Deployment) => void;
 }
 
-export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
-  const raw = resource.raw;
-  const template = raw?.spec?.template?.spec || {};
-  
-  const [hostname, setHostname] = useState<string>(template.hostname || '');
-  const [subdomain, setSubdomain] = useState<string>(template.subdomain || '');
-  const [setHostnameAsFQDN, setSetHostnameAsFQDN] = useState<boolean>(template.setHostnameAsFQDN || false);
-  const [dnsPolicy, setDnsPolicy] = useState<string>(template.dnsPolicy || 'ClusterFirst');
-  const [dnsConfig, setDnsConfig] = useState<any>(template.dnsConfig || {});
-  const [hostAliases, setHostAliases] = useState<Array<{ ip: string; hostnames: string[] }>>(template.hostAliases || []);
-  const [enableServiceLinks, setEnableServiceLinks] = useState<boolean | undefined>(template.enableServiceLinks);
-  
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+export const DeploymentNetwork: React.FC<Props> = ({ model, updateModel }) => {
+  const template = model?.spec?.template?.spec;
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      const spec = updated.spec.template.spec;
-      
-      spec.hostname = hostname || undefined;
-      spec.subdomain = subdomain || undefined;
-      spec.setHostnameAsFQDN = setHostnameAsFQDN || undefined;
-      spec.dnsPolicy = dnsPolicy !== 'ClusterFirst' ? dnsPolicy : undefined;
-      spec.dnsConfig = Object.keys(dnsConfig).length > 0 ? dnsConfig : undefined;
-      spec.hostAliases = hostAliases.length > 0 ? hostAliases : undefined;
-      spec.enableServiceLinks = enableServiceLinks;
-      
-      await onApply(updated);
-      setHasChanges(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  // Helper to update template spec
+  const updateTemplateSpec = (updates: Record<string, unknown>) => {
+    updateModel(current => {
+      const currentSpec = current.spec?.template?.spec;
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          selector: current.spec?.selector || { matchLabels: {} },
+          template: {
+            ...current.spec?.template,
+            spec: {
+              ...currentSpec,
+              containers: currentSpec?.containers || [],
+              ...updates
+            }
+          }
+        }
+      };
+    });
   };
 
-  const markChanged = () => setHasChanges(true);
+  const hostname = template?.hostname || '';
+  const subdomain = template?.subdomain || '';
+  const setHostnameAsFQDN = template?.setHostnameAsFQDN || false;
+  const dnsPolicy = template?.dnsPolicy || 'ClusterFirst';
+  const dnsConfig = template?.dnsConfig || {};
+  const hostAliases = (template?.hostAliases || []) as Array<{ ip: string; hostnames: string[] }>;
+  const enableServiceLinks = template?.enableServiceLinks;
 
-  const updateDnsConfig = (updates: any) => {
+  const updateDnsConfig = (updates: Record<string, unknown>) => {
     const newConfig = { ...dnsConfig, ...updates };
     Object.keys(newConfig).forEach(k => {
-      if (!newConfig[k] || (Array.isArray(newConfig[k]) && newConfig[k].length === 0)) {
-        delete newConfig[k];
+      if (!(newConfig as Record<string, unknown>)[k] || (Array.isArray((newConfig as Record<string, unknown>)[k]) && ((newConfig as Record<string, unknown>)[k] as unknown[]).length === 0)) {
+        delete (newConfig as Record<string, unknown>)[k];
       }
     });
-    setDnsConfig(newConfig);
-    markChanged();
+    updateTemplateSpec({ dnsConfig: Object.keys(newConfig).length > 0 ? newConfig : undefined });
   };
 
   return (
     <div className="space-y-6">
-      {/* Save Banner */}
-      {hasChanges && (
-        <div className="sticky top-0 z-10 bg-amber-900/80 backdrop-blur-sm border border-amber-700 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-200">
-            <AlertCircle size={16} />
-            <span className="text-sm font-medium">You have unsaved changes</span>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-bold rounded transition-colors"
-          >
-            {saving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-      )}
-
       {/* Hostname Settings */}
       <div className="bg-slate-900/50 rounded-xl border border-slate-800 overflow-hidden">
         <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 flex items-center gap-2">
@@ -100,7 +73,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="text"
                 value={hostname}
-                onChange={(e) => { setHostname(e.target.value); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ hostname: e.target.value || undefined })}
                 placeholder="my-pod"
                 className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
               />
@@ -110,7 +83,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="text"
                 value={subdomain}
-                onChange={(e) => { setSubdomain(e.target.value); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ subdomain: e.target.value || undefined })}
                 placeholder="my-subdomain"
                 className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
               />
@@ -120,7 +93,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
             <input
               type="checkbox"
               checked={setHostnameAsFQDN}
-              onChange={(e) => { setSetHostnameAsFQDN(e.target.checked); markChanged(); }}
+              onChange={(e) => updateTemplateSpec({ setHostnameAsFQDN: e.target.checked || undefined })}
               className="w-4 h-4 rounded border-slate-600 bg-slate-800"
             />
             <span className="text-sm text-slate-300">Set Hostname as FQDN</span>
@@ -143,7 +116,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
             <label className="text-xs text-slate-400 mb-1 block">DNS Policy</label>
             <select
               value={dnsPolicy}
-              onChange={(e) => { setDnsPolicy(e.target.value); markChanged(); }}
+              onChange={(e) => updateTemplateSpec({ dnsPolicy: e.target.value !== 'ClusterFirst' ? e.target.value : undefined })}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500"
             >
               <option value="ClusterFirst">ClusterFirst (default)</option>
@@ -159,7 +132,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
             </p>
           </div>
 
-          {/* DNS Config (always shown, required for None policy) */}
+          {/* DNS Config */}
           <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
             <h4 className="text-sm font-semibold text-slate-300 mb-3">Custom DNS Config</h4>
             
@@ -168,7 +141,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
               <label className="text-xs text-slate-400 mb-1 block">Nameservers</label>
               <input
                 type="text"
-                value={dnsConfig.nameservers?.join(', ') || ''}
+                value={((dnsConfig as Record<string, unknown>).nameservers as string[] | undefined)?.join(', ') || ''}
                 onChange={(e) => {
                   const servers = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
                   updateDnsConfig({ nameservers: servers.length > 0 ? servers : undefined });
@@ -184,7 +157,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
               <label className="text-xs text-slate-400 mb-1 block">Search Domains</label>
               <input
                 type="text"
-                value={dnsConfig.searches?.join(', ') || ''}
+                value={((dnsConfig as Record<string, unknown>).searches as string[] | undefined)?.join(', ') || ''}
                 onChange={(e) => {
                   const searches = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
                   updateDnsConfig({ searches: searches.length > 0 ? searches : undefined });
@@ -202,7 +175,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                 <button
                   onClick={() => {
                     updateDnsConfig({
-                      options: [...(dnsConfig.options || []), { name: '', value: '' }]
+                      options: [...(((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }> | undefined) || []), { name: '', value: '' }]
                     });
                   }}
                   className="text-xs text-blue-400 hover:text-blue-300"
@@ -210,17 +183,17 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                   <Plus size={12} className="inline mr-1" /> Add Option
                 </button>
               </div>
-              {(dnsConfig.options || []).length === 0 ? (
+              {(((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }> | undefined) || []).length === 0 ? (
                 <div className="text-xs text-slate-500">No custom options</div>
               ) : (
                 <div className="space-y-2">
-                  {dnsConfig.options?.map((opt: any, i: number) => (
+                  {(((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }> | undefined) || []).map((opt, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <input
                         type="text"
                         value={opt.name}
                         onChange={(e) => {
-                          const newOpts = [...dnsConfig.options];
+                          const newOpts = [...(((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }>) || [])];
                           newOpts[i] = { ...opt, name: e.target.value };
                           updateDnsConfig({ options: newOpts });
                         }}
@@ -231,7 +204,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                         type="text"
                         value={opt.value || ''}
                         onChange={(e) => {
-                          const newOpts = [...dnsConfig.options];
+                          const newOpts = [...(((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }>) || [])];
                           newOpts[i] = { ...opt, value: e.target.value || undefined };
                           updateDnsConfig({ options: newOpts });
                         }}
@@ -240,7 +213,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                       />
                       <button
                         onClick={() => {
-                          const newOpts = dnsConfig.options.filter((_: any, idx: number) => idx !== i);
+                          const newOpts = (((dnsConfig as Record<string, unknown>).options as Array<{ name: string; value?: string }>) || []).filter((_, idx) => idx !== i);
                           updateDnsConfig({ options: newOpts.length > 0 ? newOpts : undefined });
                         }}
                         className="text-red-400 hover:text-red-300"
@@ -253,18 +226,6 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
               )}
             </div>
           </div>
-
-          {/* Common DNS Options Reference */}
-          <div className="text-xs text-slate-500 bg-slate-800/30 rounded p-3 border border-slate-700/50">
-            <strong>Common DNS Options:</strong>
-            <ul className="mt-1 space-y-1">
-              <li><code className="text-slate-400">ndots</code> - Number of dots in a name to trigger absolute lookup (default: 5)</li>
-              <li><code className="text-slate-400">timeout</code> - Initial timeout for DNS query (default: varies)</li>
-              <li><code className="text-slate-400">attempts</code> - Number of attempts before giving up (default: varies)</li>
-              <li><code className="text-slate-400">rotate</code> - Round-robin selection of nameservers</li>
-              <li><code className="text-slate-400">single-request</code> - Make A and AAAA queries sequentially</li>
-            </ul>
-          </div>
         </div>
       </div>
 
@@ -276,10 +237,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
             <span className="font-semibold text-slate-200">Host Aliases</span>
           </div>
           <button
-            onClick={() => { 
-              setHostAliases([...hostAliases, { ip: '', hostnames: [] }]); 
-              markChanged(); 
-            }}
+            onClick={() => updateTemplateSpec({ hostAliases: [...hostAliases, { ip: '', hostnames: [] }] })}
             className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300"
           >
             <Plus size={14} /> Add Entry
@@ -308,8 +266,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                         onChange={(e) => {
                           const newAliases = [...hostAliases];
                           newAliases[i] = { ...alias, ip: e.target.value };
-                          setHostAliases(newAliases);
-                          markChanged();
+                          updateTemplateSpec({ hostAliases: newAliases });
                         }}
                         placeholder="10.0.0.1"
                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white font-mono"
@@ -326,8 +283,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                             ...alias, 
                             hostnames: e.target.value.split(',').map(s => s.trim()).filter(Boolean) 
                           };
-                          setHostAliases(newAliases);
-                          markChanged();
+                          updateTemplateSpec({ hostAliases: newAliases });
                         }}
                         placeholder="host1.example.com, host2.example.com"
                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white"
@@ -335,8 +291,8 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
                     </div>
                     <button
                       onClick={() => {
-                        setHostAliases(hostAliases.filter((_, idx) => idx !== i));
-                        markChanged();
+                        const newAliases = hostAliases.filter((_, idx) => idx !== i);
+                        updateTemplateSpec({ hostAliases: newAliases.length > 0 ? newAliases : undefined });
                       }}
                       className="mt-5 text-red-400 hover:text-red-300"
                     >
@@ -361,10 +317,7 @@ export const DeploymentNetwork: React.FC<Props> = ({ resource, onApply }) => {
             <input
               type="checkbox"
               checked={enableServiceLinks !== false}
-              onChange={(e) => { 
-                setEnableServiceLinks(e.target.checked ? undefined : false); 
-                markChanged(); 
-              }}
+              onChange={(e) => updateTemplateSpec({ enableServiceLinks: e.target.checked ? undefined : false })}
               className="w-4 h-4 rounded border-slate-600 bg-slate-800"
             />
             <span className="text-sm text-slate-300">Enable Service Links</span>

@@ -10,13 +10,13 @@ import { Layers } from 'lucide-react';
 
 interface JobOverviewProps {
   resource: ClusterResource;
-  job: V1Job;
-  onApply: (job: V1Job) => Promise<void>;
+  model: V1Job;
+  updateModel: (updater: (current: V1Job) => V1Job) => void;
 }
 
-export const JobOverview: React.FC<JobOverviewProps> = ({ resource, job, onApply }) => {
-  const spec = job.spec;
-  const status = job.status;
+export const JobOverview: React.FC<JobOverviewProps> = ({ resource, model, updateModel }) => {
+  const spec = model.spec;
+  const status = model.status;
 
   // Determine job status
   const conditions = (status?.conditions || []) as V1JobCondition[];
@@ -131,54 +131,80 @@ export const JobOverview: React.FC<JobOverviewProps> = ({ resource, job, onApply
 
       {/* Owner (e.g., CronJob) */}
       <OwnerReferencesCard 
-        ownerReferences={job.metadata?.ownerReferences}
+        ownerReferences={model.metadata?.ownerReferences}
         showFullChain
       />
 
       {/* Owned Pods */}
       <OwnedResourcesCard 
-        resourceUid={job.metadata?.uid}
+        resourceUid={model.metadata?.uid}
         filterKinds={['Pod']}
         title="Pods"
         groupByKind={false}
       />
 
       {/* Metadata */}
-      <MetadataCard metadata={job.metadata} />
+      <MetadataCard metadata={model.metadata} />
 
       {/* Labels */}
       <LabelsCard 
-        labels={job.metadata?.labels} 
+        labels={model.metadata?.labels} 
         editable
-        onAdd={async (key, value) => {
-          const updated = { ...job };
-          updated.metadata = { ...updated.metadata, labels: { ...updated.metadata?.labels, [key]: value } };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              labels: {
+                ...current.metadata?.labels,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          const updated = { ...job };
-          const newLabels = { ...updated.metadata?.labels };
-          delete newLabels[key];
-          updated.metadata = { ...updated.metadata, labels: newLabels };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newLabels = { ...current.metadata?.labels };
+            delete newLabels[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                labels: newLabels
+              }
+            };
+          });
         }}
       />
 
       {/* Annotations */}
       <AnnotationsCard 
-        annotations={job.metadata?.annotations} 
+        annotations={model.metadata?.annotations} 
         editable
-        onAdd={async (key, value) => {
-          const updated = { ...job };
-          updated.metadata = { ...updated.metadata, annotations: { ...updated.metadata?.annotations, [key]: value } };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              annotations: {
+                ...current.metadata?.annotations,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          const updated = { ...job };
-          const newAnnotations = { ...updated.metadata?.annotations };
-          delete newAnnotations[key];
-          updated.metadata = { ...updated.metadata, annotations: newAnnotations };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newAnnotations = { ...current.metadata?.annotations };
+            delete newAnnotations[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                annotations: newAnnotations
+              }
+            };
+          });
         }}
       />
 

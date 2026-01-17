@@ -1,119 +1,69 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { V1Service, V1ServicePort } from '../../../../api/k8s-types';
 import { 
   Network, 
   Plus, 
   Trash2, 
-  RefreshCw,
-  ArrowRight,
-  Save
+  ArrowRight
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Card, CardHeader, CardBody } from '../../shared';
 
 interface Props {
-  service: V1Service;
-  onApply: (updatedRaw: V1Service) => Promise<void>;
+  model: V1Service;
+  updateModel: (updater: (current: V1Service) => V1Service) => void;
 }
 
-interface EditablePort {
-  name: string;
-  protocol: string;
-  port: number;
-  targetPort: number | string;
-  nodePort?: number;
-}
+export const ServicePorts: React.FC<Props> = ({ model, updateModel }) => {
+  const spec = model.spec;
+  const ports = spec?.ports || [];
+  const showNodePort = spec?.type === 'NodePort' || spec?.type === 'LoadBalancer';
 
-export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
-  const spec = service.spec;
-  
-  // Convert ports to editable format
-  const initialPorts: EditablePort[] = (spec?.ports || []).map(p => ({
-    name: p.name || '',
-    protocol: p.protocol || 'TCP',
-    port: p.port || 80,
-    targetPort: p.targetPort || p.port || 80,
-    nodePort: p.nodePort
-  }));
-
-  const [ports, setPorts] = useState<EditablePort[]>(initialPorts);
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-
-  const updatePort = (index: number, updates: Partial<EditablePort>) => {
-    const newPorts = [...ports];
-    newPorts[index] = { ...newPorts[index], ...updates };
-    setPorts(newPorts);
-    setHasChanges(true);
+  const updatePort = (index: number, updates: Partial<V1ServicePort>) => {
+    updateModel(current => {
+      const currentPorts = [...(current.spec?.ports || [])];
+      currentPorts[index] = { ...currentPorts[index], ...updates };
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          ports: currentPorts
+        }
+      };
+    });
   };
 
   const addPort = () => {
-    setPorts([...ports, {
-      name: `port-${ports.length + 1}`,
-      protocol: 'TCP',
-      port: 80,
-      targetPort: 80
-    }]);
-    setHasChanges(true);
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        ports: [
+          ...(current.spec?.ports || []),
+          {
+            name: `port-${(current.spec?.ports || []).length + 1}`,
+            protocol: 'TCP',
+            port: 80,
+            targetPort: 80
+          }
+        ]
+      }
+    }));
   };
 
   const removePort = (index: number) => {
     if (ports.length <= 1) return; // Must have at least one port
-    setPorts(ports.filter((_, i) => i !== index));
-    setHasChanges(true);
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        ports: (current.spec?.ports || []).filter((_, i) => i !== index)
+      }
+    }));
   };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (!updated.spec) updated.spec = {};
-      
-      updated.spec.ports = ports.map(p => {
-        const port: V1ServicePort = {
-          name: p.name || undefined,
-          protocol: p.protocol,
-          port: Number(p.port),
-          targetPort: typeof p.targetPort === 'string' && isNaN(Number(p.targetPort)) 
-            ? p.targetPort 
-            : Number(p.targetPort)
-        };
-        
-        // Only include nodePort for NodePort/LoadBalancer services
-        if (p.nodePort && (spec?.type === 'NodePort' || spec?.type === 'LoadBalancer')) {
-          port.nodePort = Number(p.nodePort);
-        }
-        
-        return port;
-      });
-
-      await onApply(updated);
-      setHasChanges(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const showNodePort = spec?.type === 'NodePort' || spec?.type === 'LoadBalancer';
 
   return (
     <div className="space-y-6">
-      {/* Save Button */}
-      {hasChanges && (
-        <div className="flex justify-end">
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold rounded-lg transition-colors flex items-center gap-2"
-          >
-            {saving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-      )}
-
       {/* Ports Card */}
       <Card>
         <CardHeader 
@@ -140,8 +90,8 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                     <label className="text-xs text-slate-500 uppercase font-bold block mb-1">Name</label>
                     <input
                       type="text"
-                      value={port.name}
-                      onChange={(e) => updatePort(index, { name: e.target.value })}
+                      value={port.name || ''}
+                      onChange={(e) => updatePort(index, { name: e.target.value || undefined })}
                       placeholder="http"
                       className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                     />
@@ -151,7 +101,7 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                   <div className="col-span-2">
                     <label className="text-xs text-slate-500 uppercase font-bold block mb-1">Protocol</label>
                     <select
-                      value={port.protocol}
+                      value={port.protocol || 'TCP'}
                       onChange={(e) => updatePort(index, { protocol: e.target.value })}
                       className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                     >
@@ -166,7 +116,7 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                     <label className="text-xs text-slate-500 uppercase font-bold block mb-1">Port</label>
                     <input
                       type="number"
-                      value={port.port}
+                      value={port.port || 0}
                       onChange={(e) => updatePort(index, { port: parseInt(e.target.value) || 0 })}
                       className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                     />
@@ -182,8 +132,14 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                     <label className="text-xs text-slate-500 uppercase font-bold block mb-1">Target Port</label>
                     <input
                       type="text"
-                      value={port.targetPort}
-                      onChange={(e) => updatePort(index, { targetPort: e.target.value })}
+                      value={port.targetPort ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        const numVal = Number(val);
+                        updatePort(index, { 
+                          targetPort: isNaN(numVal) || val === '' ? val : numVal 
+                        });
+                      }}
                       placeholder="8080 or name"
                       className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                     />
@@ -196,7 +152,9 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                       <input
                         type="number"
                         value={port.nodePort || ''}
-                        onChange={(e) => updatePort(index, { nodePort: parseInt(e.target.value) || undefined })}
+                        onChange={(e) => updatePort(index, { 
+                          nodePort: e.target.value ? parseInt(e.target.value) : undefined 
+                        })}
                         placeholder="Auto"
                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                       />
@@ -239,12 +197,12 @@ export const ServicePorts: React.FC<Props> = ({ service, onApply }) => {
                 {ports.map((port, i) => (
                   <tr key={i} className="hover:bg-slate-800/30 transition-colors">
                     <td className="px-4 py-3 text-slate-300">{port.name || '-'}</td>
-                    <td className="px-4 py-3 text-slate-400">{port.protocol}</td>
+                    <td className="px-4 py-3 text-slate-400">{port.protocol || 'TCP'}</td>
                     <td className="px-4 py-3 font-mono text-emerald-400">{port.port}</td>
                     <td className="px-4 py-3 font-mono text-slate-300">
                       <div className="flex items-center gap-2">
                         <ArrowRight size={12} className="text-slate-600" />
-                        {port.targetPort}
+                        {port.targetPort ?? port.port}
                       </div>
                     </td>
                     {showNodePort && (

@@ -3,11 +3,11 @@ import type { V1Job } from '../../../../api/k8s-types';
 import { PodTemplateView } from '../../shared';
 
 interface JobPodTemplateProps {
-  job: V1Job;
+  model: V1Job;
 }
 
-export const JobPodTemplate: React.FC<JobPodTemplateProps> = ({ job }) => {
-  const template = job.spec?.template;
+export const JobPodTemplate: React.FC<JobPodTemplateProps> = ({ model }) => {
+  const template = model.spec?.template;
 
   if (!template) {
     return (

@@ -6,7 +6,6 @@ import {
   Shield, 
   Plus, 
   Trash2, 
-  RefreshCw,
   Check,
   AlertTriangle,
   Award
@@ -20,13 +19,12 @@ import {
 import { clsx } from 'clsx';
 
 interface Props {
-  ingress: V1Ingress;
-  onApply: (updatedRaw: V1Ingress) => Promise<void>;
+  model: V1Ingress;
+  updateModel: (updater: (current: V1Ingress) => V1Ingress) => void;
 }
 
-export const IngressTLS: React.FC<Props> = ({ ingress, onApply }) => {
+export const IngressTLS: React.FC<Props> = ({ model, updateModel }) => {
   const { client } = useClusterStore();
-  const [saving, setSaving] = useState(false);
   
   // TLS List State
   const [addingTls, setAddingTls] = useState(false);
@@ -37,8 +35,8 @@ export const IngressTLS: React.FC<Props> = ({ ingress, onApply }) => {
   const [clusterIssuers, setClusterIssuers] = useState<string[]>([]);
   const [loadingIssuers, setLoadingIssuers] = useState(false);
   
-  const metadata = ingress.metadata;
-  const spec = ingress.spec;
+  const metadata = model.metadata;
+  const spec = model.spec;
   const annotations = metadata?.annotations || {};
   
   const certManagerIssuer = annotations['cert-manager.io/issuer'];
@@ -85,78 +83,65 @@ export const IngressTLS: React.FC<Props> = ({ ingress, onApply }) => {
   }, [client, metadata?.namespace]);
 
   // Handle adding TLS entry
-  const handleAddTls = async () => {
+  const handleAddTls = () => {
     if (!newTls.hosts.trim() || !newTls.secretName.trim()) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.spec) updated.spec = {};
-      if (!updated.spec.tls) updated.spec.tls = [];
-      
-      updated.spec.tls.push({
-        hosts: newTls.hosts.split(',').map(h => h.trim()).filter(h => h),
-        secretName: newTls.secretName.trim()
-      });
-      
-      await onApply(updated);
-      setNewTls({ hosts: '', secretName: '' });
-      setAddingTls(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        tls: [
+          ...(current.spec?.tls || []),
+          {
+            hosts: newTls.hosts.split(',').map(h => h.trim()).filter(h => h),
+            secretName: newTls.secretName.trim()
+          }
+        ]
+      }
+    }));
+    
+    setNewTls({ hosts: '', secretName: '' });
+    setAddingTls(false);
   };
 
   // Handle removing TLS entry
-  const handleRemoveTls = async (index: number) => {
+  const handleRemoveTls = (index: number) => {
     if (!confirm('Remove this TLS configuration?')) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (updated.spec?.tls) {
-        updated.spec.tls.splice(index, 1);
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        tls: current.spec?.tls?.filter((_, i) => i !== index)
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
   };
 
   // Handle Cert Manager changes
-  const handleSaveCertManager = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
+  const handleSaveCertManager = () => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
       
       // Clean up old annotations
-      delete updated.metadata.annotations['cert-manager.io/issuer'];
-      delete updated.metadata.annotations['cert-manager.io/cluster-issuer'];
+      delete newAnnotations['cert-manager.io/issuer'];
+      delete newAnnotations['cert-manager.io/cluster-issuer'];
       
       if (useCertManager && selectedIssuer) {
         if (selectedIssuerType === 'Issuer') {
-          updated.metadata.annotations['cert-manager.io/issuer'] = selectedIssuer;
+          newAnnotations['cert-manager.io/issuer'] = selectedIssuer;
         } else {
-          updated.metadata.annotations['cert-manager.io/cluster-issuer'] = selectedIssuer;
+          newAnnotations['cert-manager.io/cluster-issuer'] = selectedIssuer;
         }
-        
-        // Ensure there is at least one TLS entry if using cert-manager
-        // Often users want to auto-configure this, but we'll leave spec.tls management to them
-        // or we could auto-add a placeholder if empty? For now let's just set the annotation.
       }
       
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
   };
 
   return (
@@ -242,10 +227,9 @@ export const IngressTLS: React.FC<Props> = ({ ingress, onApply }) => {
 
               <button
                 onClick={handleSaveCertManager}
-                disabled={saving}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-bold rounded transition-colors flex items-center gap-2"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded transition-colors flex items-center gap-2"
               >
-                {saving ? <RefreshCw className="animate-spin" size={14} /> : <Check size={14} />}
+                <Check size={14} />
                 Apply Cert Manager Settings
               </button>
             </div>
@@ -304,10 +288,9 @@ export const IngressTLS: React.FC<Props> = ({ ingress, onApply }) => {
                 </button>
                 <button
                   onClick={handleAddTls}
-                  disabled={saving || !newTls.hosts.trim() || !newTls.secretName.trim()}
+                  disabled={!newTls.hosts.trim() || !newTls.secretName.trim()}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
                 >
-                  {saving && <RefreshCw className="animate-spin" size={12} />}
                   Add Rule
                 </button>
               </div>

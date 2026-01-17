@@ -5,8 +5,8 @@ import { TrendingUp, TrendingDown, Clock, Settings, ArrowUp, ArrowDown } from 'l
 import { clsx } from 'clsx';
 
 interface HPABehaviorProps {
-  hpa: V2HorizontalPodAutoscaler;
-  onApply: (hpa: V2HorizontalPodAutoscaler) => Promise<void>;
+  model: V2HorizontalPodAutoscaler;
+  updateModel: (updater: (current: V2HorizontalPodAutoscaler) => V2HorizontalPodAutoscaler) => void;
 }
 
 const PolicyCard: React.FC<{ policy: V2HPAScalingPolicy; direction: 'up' | 'down' }> = ({ policy, direction }) => {
@@ -87,8 +87,8 @@ const ScalingRulesSection: React.FC<{
   );
 };
 
-export const HPABehavior: React.FC<HPABehaviorProps> = ({ hpa }) => {
-  const behavior = hpa.spec?.behavior;
+export const HPABehavior: React.FC<HPABehaviorProps> = ({ model }) => {
+  const behavior = model.spec?.behavior;
 
   if (!behavior) {
     return (

@@ -133,6 +133,29 @@ func main() {
 		k8s.HandleInit(initConfig, w, r)
 	})
 
+	// Apply YAML Handler
+	http.HandleFunc("/api/resources/apply-yaml", func(w http.ResponseWriter, r *http.Request) {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		var applyConfig *rest.Config
+		if targetUrl != "" {
+			applyConfig = &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		} else {
+			applyConfig = config
+		}
+
+		if applyConfig == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return
+		}
+		k8s.HandleApplyYaml(applyConfig, w, r)
+	})
+
 	// Helm Handler - MUST be registered BEFORE /api/ catch-all
 	http.HandleFunc("/api/helm/", func(w http.ResponseWriter, r *http.Request) {
 		targetUrl := r.URL.Query().Get("target")

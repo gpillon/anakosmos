@@ -15,6 +15,8 @@ import { useForceLayout, shouldShowResource } from '../logic/LayoutEngine';
 import type { ClusterResource } from '../api/types';
 import { SceneStatsReporter } from '../ui/HUD';
 import { AnimatedInstancedMaterial } from './AnimatedInstancedMaterial';
+import { CreationScene } from './CreationScene';
+import { useResourceCreationStore } from '../store/useResourceCreationStore';
 import { 
   nodeGeo, podGeo, serviceGeo, deployGeo, 
   statefulGeo, daemonGeo, replicaGeo,
@@ -159,7 +161,7 @@ const ResourceLabel: React.FC<{
 
   return (
     <group ref={groupRef}>
-        <Html center style={{ pointerEvents: 'none' }} zIndexRange={[100, 0]}>
+        <Html center style={{ pointerEvents: 'none' }} zIndexRange={[30, 0]}>
             <div className="px-2 py-1 bg-slate-900/80 text-white text-xs rounded border border-slate-600 shadow-xl whitespace-nowrap backdrop-blur-sm flex flex-col items-center">
                 <div className="font-bold">{res.name}</div>
                 <div className="text-[10px] text-slate-400">{res.kind}</div>
@@ -452,7 +454,7 @@ const LayoutSystem: React.FC<{
   return <>{children(interpolatedRef)}</>;
 };
 
-export const ClusterScene: React.FC = () => {
+const MainClusterScene: React.FC = () => {
   const setSceneReady = useClusterStore(state => state.setSceneReady);
   const isOnboardingActive = useOnboardingStore(state => state.isActive);
   
@@ -684,4 +686,12 @@ export const ClusterScene: React.FC = () => {
       </Canvas>
     </div>
   );
+};
+
+export const ClusterScene: React.FC = () => {
+  const isCreationMode = useResourceCreationStore(state => state.isCreationMode);
+  if (isCreationMode) {
+    return <CreationScene />;
+  }
+  return <MainClusterScene />;
 };

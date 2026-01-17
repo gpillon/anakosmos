@@ -30,9 +30,6 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
   const activePreset = useSettingsStore(state => state.activePreset);
 
   const geometryRef = useRef<THREE.BufferGeometry>(null);
-  const positionArrayRef = useRef<Float32Array | null>(null);
-  const colorArrayRef = useRef<Float32Array | null>(null);
-  const prevCountRef = useRef(0);
 
   // Pre-compute visible links and colors
   const visibleLinks = useMemo(() => {
@@ -81,33 +78,27 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
   }, [links, resources, hiddenLinkTypes, hiddenResourceKinds, statusFilters, selectedResourceId, searchQuery, filterNamespaces, hideSystemNamespaces, activePreset]);
 
   const count = visibleLinks.length;
+  const size = count * 6;
 
-  // Create/resize buffers only when count changes
-  useMemo(() => {
-    const size = count * 6;
-    if (!positionArrayRef.current || positionArrayRef.current.length !== size) {
-      positionArrayRef.current = new Float32Array(size);
-    }
-    if (!colorArrayRef.current || colorArrayRef.current.length !== size) {
-      colorArrayRef.current = new Float32Array(size);
-    }
-    // Fill color array
+  const positionArray = useMemo(() => new Float32Array(size), [size]);
+  const colorArray = useMemo(() => {
+    const next = new Float32Array(size);
     visibleLinks.forEach((item, i) => {
       const [r, g, b] = item.color;
       const idx = i * 6;
-      colorArrayRef.current![idx] = r;
-      colorArrayRef.current![idx + 1] = g;
-      colorArrayRef.current![idx + 2] = b;
-      colorArrayRef.current![idx + 3] = r;
-      colorArrayRef.current![idx + 4] = g;
-      colorArrayRef.current![idx + 5] = b;
+      next[idx] = r;
+      next[idx + 1] = g;
+      next[idx + 2] = b;
+      next[idx + 3] = r;
+      next[idx + 4] = g;
+      next[idx + 5] = b;
     });
-    prevCountRef.current = count;
-  }, [count, visibleLinks]);
+    return next;
+  }, [size, visibleLinks]);
 
   // Update positions every frame
   useFrame(() => {
-    if (!geometryRef.current || !positionArrayRef.current) return;
+    if (!geometryRef.current) return;
     
     const posAttr = geometryRef.current.attributes.position;
     if (!posAttr) return;
@@ -144,7 +135,7 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
     }
   });
 
-  if (count === 0 || !positionArrayRef.current || !colorArrayRef.current) return null;
+  if (count === 0) return null;
 
   // Use key to force geometry recreation only when count changes
   // Disable raycast to prevent lines from blocking clicks on resources behind them
@@ -153,12 +144,12 @@ export const LinkLayer: React.FC<LinkLayerProps> = ({ positionsRef }) => {
       <bufferGeometry ref={geometryRef}>
         <bufferAttribute 
             attach="attributes-position" 
-            args={[positionArrayRef.current, 3]}
+            args={[positionArray, 3]}
             usage={THREE.DynamicDrawUsage} 
         />
         <bufferAttribute 
             attach="attributes-color" 
-            args={[colorArrayRef.current, 3]}
+            args={[colorArray, 3]}
         />
       </bufferGeometry>
       <lineBasicMaterial vertexColors transparent opacity={0.6} linewidth={1} />

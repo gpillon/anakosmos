@@ -4,11 +4,11 @@ import { PodTemplateView, Card, CardHeader, CardBody, MetaRow } from '../../shar
 import { Layers, Settings } from 'lucide-react';
 
 interface CronJobJobTemplateProps {
-  cronJob: V1CronJob;
+  model: V1CronJob;
 }
 
-export const CronJobJobTemplate: React.FC<CronJobJobTemplateProps> = ({ cronJob }) => {
-  const jobTemplate = cronJob.spec?.jobTemplate;
+export const CronJobJobTemplate: React.FC<CronJobJobTemplateProps> = ({ model }) => {
+  const jobTemplate = model.spec?.jobTemplate;
   const jobSpec = jobTemplate?.spec;
   const podTemplate = jobSpec?.template;
 

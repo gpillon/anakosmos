@@ -1,12 +1,16 @@
 package helm
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"os"
+	"strings"
 
 	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v3/pkg/chart/loader"
 	"helm.sh/helm/v3/pkg/cli"
+	"helm.sh/helm/v3/pkg/registry"
 	"helm.sh/helm/v3/pkg/release"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
@@ -133,6 +137,73 @@ func (m *HelmManager) Upgrade(namespace, name string, values map[string]interfac
 	client.ReuseValues = false // We want to override with provided values
 	
 	return client.Run(name, chart, values)
+}
+
+// InstallFromRepo installs a chart from a repository URL.
+func (m *HelmManager) InstallFromRepo(namespace, releaseName, repoURL, chartName, version string, values map[string]interface{}) (*release.Release, error) {
+	cfg, err := m.getActionConfig(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	client := action.NewInstall(cfg)
+	client.Namespace = namespace
+	client.ReleaseName = releaseName
+	client.ChartPathOptions.Version = version
+	registryClient, err := registry.NewClient()
+	if err != nil {
+		return nil, err
+	}
+	client.SetRegistryClient(registryClient)
+
+	chartRef := chartName
+	if strings.HasPrefix(repoURL, "oci://") {
+		chartRef = strings.TrimRight(repoURL, "/")
+		if chartName != "" {
+			chartRef = chartRef + "/" + chartName
+		}
+	} else {
+		client.ChartPathOptions.RepoURL = repoURL
+	}
+
+	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, m.settings)
+	if err != nil {
+		return nil, err
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if values == nil {
+		values = map[string]interface{}{}
+	}
+
+	return client.Run(chart, values)
+}
+
+// InstallFromArchive installs a chart from a .tgz archive.
+func (m *HelmManager) InstallFromArchive(namespace, releaseName string, chartData []byte, values map[string]interface{}) (*release.Release, error) {
+	cfg, err := m.getActionConfig(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	client := action.NewInstall(cfg)
+	client.Namespace = namespace
+	client.ReleaseName = releaseName
+
+	chart, err := loader.LoadArchive(bytes.NewReader(chartData))
+	if err != nil {
+		return nil, err
+	}
+
+	if values == nil {
+		values = map[string]interface{}{}
+	}
+
+	return client.Run(chart, values)
 }
 
 

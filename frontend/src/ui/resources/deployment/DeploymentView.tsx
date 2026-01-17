@@ -1,12 +1,13 @@
 import React from 'react';
 import type { ClusterResource } from '../../../api/types';
+import type { V1Deployment } from '../../../api/k8s-types';
 import { DeploymentOverview } from './tabs/DeploymentOverview';
 import { DeploymentContainers } from './tabs/DeploymentContainers';
 import { DeploymentVolumes } from './tabs/DeploymentVolumes';
 import { DeploymentScheduling } from './tabs/DeploymentScheduling';
 import { DeploymentSecurity } from './tabs/DeploymentSecurity';
 import { DeploymentNetwork } from './tabs/DeploymentNetwork';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface DeploymentViewProps {
   resource: ClusterResource;
@@ -25,18 +26,28 @@ export const deploymentTabs = [
 
 export const DeploymentView: React.FC<DeploymentViewProps> = ({ resource, activeTab }) => {
   const {
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1Deployment>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -54,13 +65,59 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({ resource, active
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <DeploymentOverview key={resourceKey} resource={fullResource} onApply={applyChanges} />}
-      {activeTab === 'containers' && <DeploymentContainers key={resourceKey} resource={fullResource} onApply={applyChanges} />}
-      {activeTab === 'volumes' && <DeploymentVolumes key={resourceKey} resource={fullResource} onApply={applyChanges} />}
-      {activeTab === 'scheduling' && <DeploymentScheduling key={resourceKey} resource={fullResource} onApply={applyChanges} />}
-      {activeTab === 'security' && <DeploymentSecurity key={resourceKey} resource={fullResource} onApply={applyChanges} />}
-      {activeTab === 'network' && <DeploymentNetwork key={resourceKey} resource={fullResource} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <DeploymentOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'containers' && model && (
+        <DeploymentContainers 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'volumes' && model && (
+        <DeploymentVolumes 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'scheduling' && model && (
+        <DeploymentScheduling 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'security' && model && (
+        <DeploymentSecurity 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'network' && model && (
+        <DeploymentNetwork 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

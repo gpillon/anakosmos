@@ -5,8 +5,8 @@ import { Card, CardHeader, CardBody } from './Card';
 interface LabelsCardProps {
   labels: Record<string, string> | undefined;
   editable?: boolean;
-  onAdd?: (key: string, value: string) => Promise<void>;
-  onRemove?: (key: string) => Promise<void>;
+  onAdd?: (key: string, value: string) => void | Promise<void>;
+  onRemove?: (key: string) => void | Promise<void>;
   saving?: boolean;
 }
 

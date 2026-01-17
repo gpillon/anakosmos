@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ClusterResource } from '../../../../api/types';
+import type { V1Deployment, V1Container } from '../../../../api/k8s-types';
 import { 
   Box, 
   Plus, 
@@ -15,53 +16,15 @@ import {
   Activity,
   Heart,
   CheckCircle2,
-  Zap,
-  Save,
-  RefreshCw,
-  AlertCircle
+  Zap
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Combobox, useConfigMapNames, useSecretNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
-}
-
-interface ContainerSpec {
-  name: string;
-  image: string;
-  imagePullPolicy?: string;
-  command?: string[];
-  args?: string[];
-  workingDir?: string;
-  ports?: Array<{ name?: string; containerPort: number; protocol?: string; hostPort?: number }>;
-  env?: Array<{ name: string; value?: string; valueFrom?: any }>;
-  envFrom?: Array<{ configMapRef?: { name: string }; secretRef?: { name: string }; prefix?: string }>;
-  resources?: {
-    requests?: { cpu?: string; memory?: string };
-    limits?: { cpu?: string; memory?: string };
-  };
-  volumeMounts?: Array<{ name: string; mountPath: string; subPath?: string; readOnly?: boolean }>;
-  livenessProbe?: ProbeSpec;
-  readinessProbe?: ProbeSpec;
-  startupProbe?: ProbeSpec;
-  securityContext?: ContainerSecurityContext;
-  stdin?: boolean;
-  stdinOnce?: boolean;
-  tty?: boolean;
-}
-
-interface ProbeSpec {
-  httpGet?: { path: string; port: number | string; scheme?: string; httpHeaders?: Array<{ name: string; value: string }> };
-  tcpSocket?: { port: number | string };
-  exec?: { command: string[] };
-  grpc?: { port: number; service?: string };
-  initialDelaySeconds?: number;
-  periodSeconds?: number;
-  timeoutSeconds?: number;
-  successThreshold?: number;
-  failureThreshold?: number;
+  model: V1Deployment;
+  updateModel: (updater: (current: V1Deployment) => V1Deployment) => void;
 }
 
 interface ContainerSecurityContext {
@@ -77,15 +40,12 @@ interface ContainerSecurityContext {
   };
 }
 
-export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => {
-  const raw = resource.raw;
+export const DeploymentContainers: React.FC<Props> = ({ resource, model, updateModel }) => {
   const namespace = resource.namespace;
-  const template = raw?.spec?.template?.spec || {};
-  const [containers, setContainers] = useState<ContainerSpec[]>(template.containers || []);
-  const [initContainers, setInitContainers] = useState<ContainerSpec[]>(template.initContainers || []);
+  const template = model?.spec?.template?.spec;
+  const containers = template?.containers || [];
+  const initContainers = template?.initContainers || [];
   const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set([containers[0]?.name]));
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
 
   const toggleExpanded = (name: string) => {
     const next = new Set(expandedContainers);
@@ -97,36 +57,40 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
     setExpandedContainers(next);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      updated.spec.template.spec.containers = containers;
-      updated.spec.template.spec.initContainers = initContainers.length > 0 ? initContainers : undefined;
-      await onApply(updated);
-      setHasChanges(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const updateContainers = (newContainers: V1Container[], isInit: boolean = false) => {
+    updateModel(current => {
+      const currentSpec = current.spec?.template?.spec;
+      const updatedSpec = {
+        ...currentSpec,
+        containers: currentSpec?.containers || [],
+        ...(isInit 
+          ? { initContainers: newContainers.length > 0 ? newContainers : undefined }
+          : { containers: newContainers }
+        )
+      };
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          selector: current.spec?.selector || { matchLabels: {} },
+          template: {
+            ...current.spec?.template,
+            spec: updatedSpec
+          }
+        }
+      };
+    });
   };
 
-  const updateContainer = (index: number, updates: Partial<ContainerSpec>, isInit: boolean = false) => {
-    if (isInit) {
-      const newContainers = [...initContainers];
-      newContainers[index] = { ...newContainers[index], ...updates };
-      setInitContainers(newContainers);
-    } else {
-      const newContainers = [...containers];
-      newContainers[index] = { ...newContainers[index], ...updates };
-      setContainers(newContainers);
-    }
-    setHasChanges(true);
+  const updateContainer = (index: number, updates: Partial<V1Container>, isInit: boolean = false) => {
+    const targetList = isInit ? initContainers : containers;
+    const newContainers = [...targetList];
+    newContainers[index] = { ...newContainers[index], ...updates };
+    updateContainers(newContainers, isInit);
   };
 
   const addContainer = (isInit: boolean = false) => {
-    const newContainer: ContainerSpec = {
+    const newContainer: V1Container = {
       name: `container-${Date.now()}`,
       image: 'nginx:latest',
       resources: {
@@ -134,45 +98,19 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
         limits: { cpu: '200m', memory: '256Mi' }
       }
     };
-    if (isInit) {
-      setInitContainers([...initContainers, newContainer]);
-    } else {
-      setContainers([...containers, newContainer]);
-    }
-    setHasChanges(true);
+    const targetList = isInit ? initContainers : containers;
+    updateContainers([...targetList, newContainer], isInit);
     setExpandedContainers(new Set([...expandedContainers, newContainer.name]));
   };
 
   const removeContainer = (index: number, isInit: boolean = false) => {
-    if (isInit) {
-      setInitContainers(initContainers.filter((_, i) => i !== index));
-    } else {
-      if (containers.length <= 1) return; // Must have at least one container
-      setContainers(containers.filter((_, i) => i !== index));
-    }
-    setHasChanges(true);
+    const targetList = isInit ? initContainers : containers;
+    if (!isInit && targetList.length <= 1) return; // Must have at least one container
+    updateContainers(targetList.filter((_: V1Container, i: number) => i !== index), isInit);
   };
 
   return (
     <div className="space-y-6">
-      {/* Save Banner */}
-      {hasChanges && (
-        <div className="sticky top-0 z-10 bg-amber-900/80 backdrop-blur-sm border border-amber-700 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-200">
-            <AlertCircle size={16} />
-            <span className="text-sm font-medium">You have unsaved changes</span>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-bold rounded transition-colors"
-          >
-            {saving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-      )}
-
       {/* Main Containers Section */}
       <div className="bg-slate-900/50 rounded-xl border border-slate-800">
         <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
@@ -199,7 +137,7 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
               onToggle={() => toggleExpanded(container.name)}
               onUpdate={(updates) => updateContainer(idx, updates)}
               onRemove={containers.length > 1 ? () => removeContainer(idx) : undefined}
-              volumes={template.volumes || []}
+              volumes={template?.volumes || []}
               namespace={namespace}
             />
           ))}
@@ -239,7 +177,7 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
                 onToggle={() => toggleExpanded(container.name)}
                 onUpdate={(updates) => updateContainer(idx, updates, true)}
                 onRemove={() => removeContainer(idx, true)}
-                volumes={template.volumes || []}
+                volumes={template?.volumes || []}
                 namespace={namespace}
                 isInit
               />
@@ -253,13 +191,13 @@ export const DeploymentContainers: React.FC<Props> = ({ resource, onApply }) => 
 
 // Container Editor Component
 interface ContainerEditorProps {
-  container: ContainerSpec;
+  container: V1Container;
   index: number;
   isExpanded: boolean;
   onToggle: () => void;
-  onUpdate: (updates: Partial<ContainerSpec>) => void;
+  onUpdate: (updates: Partial<V1Container>) => void;
   onRemove?: () => void;
-  volumes: any[];
+  volumes: Array<{ name?: string }>;
   namespace: string;
   isInit?: boolean;
 }
@@ -342,7 +280,7 @@ const ContainerEditor: React.FC<ContainerEditorProps> = ({
             <ProbesSection container={container} onUpdate={onUpdate} />
           )}
           {activeSection === 'mounts' && (
-            <MountsSection container={container} onUpdate={onUpdate} volumes={volumes} namespace={namespace} />
+            <MountsSection container={container} onUpdate={onUpdate} volumes={volumes} />
           )}
           {activeSection === 'security' && (
             <SecuritySection container={container} onUpdate={onUpdate} />
@@ -354,17 +292,17 @@ const ContainerEditor: React.FC<ContainerEditorProps> = ({
 };
 
 // Basic Section
-const BasicSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => (
+const BasicSection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void }> = ({ container, onUpdate }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 gap-4">
       <InputField 
         label="Name" 
-        value={container.name} 
+        value={container.name || ''} 
         onChange={(v) => onUpdate({ name: v })} 
       />
       <InputField 
         label="Image" 
-        value={container.image} 
+        value={container.image || ''} 
         onChange={(v) => onUpdate({ image: v })} 
       />
     </div>
@@ -467,7 +405,7 @@ const BasicSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<C
 );
 
 // Environment Section
-const EnvironmentSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void; namespace: string }> = ({ container, onUpdate, namespace }) => {
+const EnvironmentSection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void; namespace: string }> = ({ container, onUpdate, namespace }) => {
   const configMapNames = useConfigMapNames(namespace);
   const secretNames = useSecretNames(namespace);
   
@@ -734,13 +672,17 @@ const EnvironmentSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Par
 };
 
 // Resources Section
-const ResourcesSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => {
+const ResourcesSection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void }> = ({ container, onUpdate }) => {
   const resources = container.resources || {};
 
   const updateResources = (type: 'requests' | 'limits', field: 'cpu' | 'memory', value: string) => {
-    const newResources = { ...resources };
+    const newResources = { ...resources } as { requests?: Record<string, string>; limits?: Record<string, string> };
     if (!newResources[type]) newResources[type] = {};
-    newResources[type]![field] = value || undefined;
+    if (value) {
+      newResources[type]![field] = value;
+    } else {
+      delete newResources[type]![field];
+    }
     
     // Clean up empty objects
     if (!newResources.requests?.cpu && !newResources.requests?.memory) {
@@ -810,7 +752,7 @@ const ResourcesSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Parti
 };
 
 // Probes Section
-const ProbesSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => {
+const ProbesSection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void }> = ({ container, onUpdate }) => {
   return (
     <div className="space-y-4">
       <ProbeEditor
@@ -837,6 +779,18 @@ const ProbesSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<
     </div>
   );
 };
+
+interface ProbeSpec {
+  httpGet?: { path?: string; port: number | string; scheme?: string };
+  tcpSocket?: { port: number | string };
+  exec?: { command?: string[] };
+  grpc?: { port: number; service?: string };
+  initialDelaySeconds?: number;
+  periodSeconds?: number;
+  timeoutSeconds?: number;
+  successThreshold?: number;
+  failureThreshold?: number;
+}
 
 const ProbeEditor: React.FC<{
   label: string;
@@ -937,7 +891,7 @@ const ProbeEditor: React.FC<{
           <div className="grid grid-cols-3 gap-3">
             <InputField
               label="Path"
-              value={probe.httpGet.path}
+              value={probe.httpGet.path || ''}
               onChange={(v) => onUpdate({ ...probe, httpGet: { ...probe.httpGet!, path: v } })}
             />
             <InputField
@@ -1016,9 +970,9 @@ const ProbeEditor: React.FC<{
 };
 
 // Mounts Section
-const MountsSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void; volumes: any[]; namespace: string }> = ({ container, onUpdate, volumes }) => {
+const MountsSection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void; volumes: Array<{ name?: string }> }> = ({ container, onUpdate, volumes }) => {
   const mounts = container.volumeMounts || [];
-  const volumeNames = volumes.map((v: any) => v.name);
+  const volumeNames = volumes.map((v) => v.name || '').filter(Boolean);
 
   return (
     <div className="space-y-4">
@@ -1117,15 +1071,15 @@ const MountsSection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<
 };
 
 // Security Section
-const SecuritySection: React.FC<{ container: ContainerSpec; onUpdate: (u: Partial<ContainerSpec>) => void }> = ({ container, onUpdate }) => {
-  const sec = container.securityContext || {};
+const SecuritySection: React.FC<{ container: V1Container; onUpdate: (u: Partial<V1Container>) => void }> = ({ container, onUpdate }) => {
+  const sec = (container.securityContext || {}) as ContainerSecurityContext;
 
   const updateSecurity = (updates: Partial<ContainerSecurityContext>) => {
     const newSec = { ...sec, ...updates };
     // Clean up
     Object.keys(newSec).forEach(k => {
-      if ((newSec as any)[k] === undefined || (newSec as any)[k] === false) {
-        delete (newSec as any)[k];
+      if ((newSec as Record<string, unknown>)[k] === undefined || (newSec as Record<string, unknown>)[k] === false) {
+        delete (newSec as Record<string, unknown>)[k];
       }
     });
     onUpdate({ securityContext: Object.keys(newSec).length > 0 ? newSec : undefined });

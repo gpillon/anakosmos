@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { ClusterResource } from '../../../../api/types';
 import type { V1Secret } from '../../../../api/k8s-types';
 import { useClusterStore } from '../../../../store/useClusterStore';
@@ -26,8 +26,8 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  secret: V1Secret;
-  onApply: (updatedRaw: V1Secret) => Promise<void>;
+  model: V1Secret;
+  updateModel: (updater: (current: V1Secret) => V1Secret) => void;
 }
 
 // Secret type descriptions
@@ -74,15 +74,14 @@ const SECRET_TYPE_INFO: Record<string, { label: string; description: string; col
   },
 };
 
-export const SecretOverview: React.FC<Props> = ({ resource, secret, onApply }) => {
-  const [saving, setSaving] = useState(false);
+export const SecretOverview: React.FC<Props> = ({ resource, model, updateModel }) => {
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
   
-  const metadata = secret.metadata;
-  const data = secret.data || {};
-  const stringData = secret.stringData || {};
-  const secretType = secret.type || 'Opaque';
+  const metadata = model.metadata;
+  const data = model.data || {};
+  const stringData = model.stringData || {};
+  const secretType = model.type || 'Opaque';
 
   const dataKeyCount = Object.keys(data).length + Object.keys(stringData).length;
   const typeInfo = SECRET_TYPE_INFO[secretType] || { label: secretType, description: 'Custom secret type', color: 'text-slate-400' };
@@ -156,64 +155,58 @@ export const SecretOverview: React.FC<Props> = ({ resource, secret, onApply }) =
   const healthStatus: HealthStatus = 'healthy';
 
   // Handle label/annotation changes
-  const handleAddLabel = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(secret)) as V1Secret;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.labels) updated.metadata.labels = {};
-      updated.metadata.labels[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveLabel = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(secret)) as V1Secret;
-      if (updated.metadata?.labels) {
-        delete updated.metadata.labels[key];
+  const handleAddLabel = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        labels: {
+          ...current.metadata?.labels,
+          [key]: value
+        }
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
   };
 
-  const handleAddAnnotation = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(secret)) as V1Secret;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
-      updated.metadata.annotations[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveLabel = (key: string) => {
+    updateModel(current => {
+      const newLabels = { ...current.metadata?.labels };
+      delete newLabels[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          labels: newLabels
+        }
+      };
+    });
   };
 
-  const handleRemoveAnnotation = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(secret)) as V1Secret;
-      if (updated.metadata?.annotations) {
-        delete updated.metadata.annotations[key];
+  const handleAddAnnotation = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        annotations: {
+          ...current.metadata?.annotations,
+          [key]: value
+        }
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
+  };
+
+  const handleRemoveAnnotation = (key: string) => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
+      delete newAnnotations[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
   };
 
   return (
@@ -266,7 +259,7 @@ export const SecretOverview: React.FC<Props> = ({ resource, secret, onApply }) =
             <div className="flex flex-wrap gap-2">
               {usingPods.map(pod => {
                 const podPhase = pod.status as string;
-                const isReady = pod.raw?.status?.conditions?.find((c: any) => c.type === 'Ready' && c.status === 'True');
+                const isReady = pod.raw?.status?.conditions?.find((c: { type: string; status: string }) => c.type === 'Ready' && c.status === 'True');
                 
                 return (
                   <button
@@ -340,7 +333,6 @@ export const SecretOverview: React.FC<Props> = ({ resource, secret, onApply }) =
         editable 
         onAdd={handleAddLabel}
         onRemove={handleRemoveLabel}
-        saving={saving}
       />
 
       {/* Annotations */}
@@ -349,7 +341,6 @@ export const SecretOverview: React.FC<Props> = ({ resource, secret, onApply }) =
         editable 
         onAdd={handleAddAnnotation}
         onRemove={handleRemoveAnnotation}
-        saving={saving}
       />
     </div>
   );

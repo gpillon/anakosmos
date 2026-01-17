@@ -6,23 +6,22 @@ import {
   StatusBanner, formatAge, OwnedResourcesCard,
 } from '../../shared';
 import type { HealthStatus } from '../../shared';
-import { Play, Pause, Calendar, Settings, Edit2, Save, X } from 'lucide-react';
+import { Play, Pause, Calendar, Settings, Edit2, Check, X } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface CronJobOverviewProps {
   resource: ClusterResource;
-  cronJob: V1CronJob;
-  onApply: (cronJob: V1CronJob) => Promise<void>;
+  model: V1CronJob;
+  updateModel: (updater: (current: V1CronJob) => V1CronJob) => void;
 }
 
-export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cronJob, onApply }) => {
-  const spec = cronJob.spec;
-  const status = cronJob.status;
+export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, model, updateModel }) => {
+  const spec = model.spec;
+  const status = model.status;
 
-  // Editable state
+  // Local UI editing states
   const [isEditingSchedule, setIsEditingSchedule] = useState(false);
-  const [schedule, setSchedule] = useState(spec?.schedule || '');
-  const [isSuspended, setIsSuspended] = useState(spec?.suspend || false);
+  const [localSchedule, setLocalSchedule] = useState(spec?.schedule || '');
 
   // Status
   const suspended = spec?.suspend === true;
@@ -35,6 +34,7 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
   const activeJobs = status?.active || [];
 
   // Parse cron expression for display
+  const schedule = spec?.schedule || '';
   let cronDescription = schedule;
   const cronParts = schedule.split(' ');
   if (cronParts.length === 5) {
@@ -46,40 +46,25 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
     else cronDescription = `${schedule}`;
   }
 
-  const handleSaveSchedule = async () => {
-    if (!spec?.jobTemplate) return;
-    const updated: V1CronJob = { 
-      ...cronJob,
-      spec: { 
-        ...spec, 
-        schedule,
-        jobTemplate: spec.jobTemplate 
+  const handleSaveSchedule = () => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec!,
+        schedule: localSchedule
       }
-    };
-    try {
-      await onApply(updated);
-      setIsEditingSchedule(false);
-    } catch (e) {
-      console.error('Failed to update schedule:', e);
-    }
+    }));
+    setIsEditingSchedule(false);
   };
 
-  const handleToggleSuspend = async () => {
-    if (!spec?.jobTemplate) return;
-    const updated: V1CronJob = { 
-      ...cronJob,
-      spec: { 
-        ...spec, 
-        suspend: !isSuspended,
-        jobTemplate: spec.jobTemplate 
+  const handleToggleSuspend = () => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec!,
+        suspend: !current.spec?.suspend
       }
-    };
-    try {
-      await onApply(updated);
-      setIsSuspended(!isSuspended);
-    } catch (e) {
-      console.error('Failed to toggle suspend:', e);
-    }
+    }));
   };
 
   return (
@@ -101,13 +86,13 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
           onClick={handleToggleSuspend}
           className={clsx(
             "flex items-center gap-2 px-4 py-2 rounded-lg border font-medium transition-colors",
-            isSuspended
+            suspended
               ? "bg-emerald-900/30 hover:bg-emerald-900/50 border-emerald-700/50 text-emerald-400"
               : "bg-amber-900/30 hover:bg-amber-900/50 border-amber-700/50 text-amber-400"
           )}
         >
-          {isSuspended ? <Play size={16} /> : <Pause size={16} />}
-          {isSuspended ? 'Resume' : 'Suspend'}
+          {suspended ? <Play size={16} /> : <Pause size={16} />}
+          {suspended ? 'Resume' : 'Suspend'}
         </button>
       </div>
 
@@ -132,8 +117,8 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
             <div className="flex items-center gap-3">
               <input
                 type="text"
-                value={schedule}
-                onChange={(e) => setSchedule(e.target.value)}
+                value={localSchedule}
+                onChange={(e) => setLocalSchedule(e.target.value)}
                 className="flex-1 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-200 font-mono focus:outline-none focus:border-blue-500"
                 placeholder="*/5 * * * *"
               />
@@ -141,11 +126,11 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
                 onClick={handleSaveSchedule}
                 className="p-2 bg-emerald-600 hover:bg-emerald-500 rounded text-white"
               >
-                <Save size={16} />
+                <Check size={16} />
               </button>
               <button
                 onClick={() => {
-                  setSchedule(spec?.schedule || '');
+                  setLocalSchedule(spec?.schedule || '');
                   setIsEditingSchedule(false);
                 }}
                 className="p-2 bg-slate-700 hover:bg-slate-600 rounded text-slate-300"
@@ -181,7 +166,7 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
 
       {/* Owned Jobs - Generic Component */}
       <OwnedResourcesCard 
-        resourceUid={cronJob.metadata?.uid}
+        resourceUid={model.metadata?.uid}
         filterKinds={['Job']}
         title="Jobs"
         groupByKind={false}
@@ -202,57 +187,67 @@ export const CronJobOverview: React.FC<CronJobOverviewProps> = ({ resource, cron
       </Card>
 
       {/* Metadata */}
-      <MetadataCard metadata={cronJob.metadata} />
+      <MetadataCard metadata={model.metadata} />
 
       {/* Labels */}
       <LabelsCard 
-        labels={cronJob.metadata?.labels} 
+        labels={model.metadata?.labels} 
         editable
-        onAdd={async (key, value) => {
-          if (!spec?.jobTemplate) return;
-          const updated: V1CronJob = {
-            ...cronJob,
-            metadata: { ...cronJob.metadata, labels: { ...cronJob.metadata?.labels, [key]: value } },
-            spec: { ...spec, jobTemplate: spec.jobTemplate }
-          };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              labels: {
+                ...current.metadata?.labels,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          if (!spec?.jobTemplate) return;
-          const newLabels = { ...cronJob.metadata?.labels };
-          delete newLabels[key];
-          const updated: V1CronJob = {
-            ...cronJob,
-            metadata: { ...cronJob.metadata, labels: newLabels },
-            spec: { ...spec, jobTemplate: spec.jobTemplate }
-          };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newLabels = { ...current.metadata?.labels };
+            delete newLabels[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                labels: newLabels
+              }
+            };
+          });
         }}
       />
 
       {/* Annotations */}
       <AnnotationsCard 
-        annotations={cronJob.metadata?.annotations}
+        annotations={model.metadata?.annotations}
         editable
-        onAdd={async (key, value) => {
-          if (!spec?.jobTemplate) return;
-          const updated: V1CronJob = {
-            ...cronJob,
-            metadata: { ...cronJob.metadata, annotations: { ...cronJob.metadata?.annotations, [key]: value } },
-            spec: { ...spec, jobTemplate: spec.jobTemplate }
-          };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              annotations: {
+                ...current.metadata?.annotations,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          if (!spec?.jobTemplate) return;
-          const newAnnotations = { ...cronJob.metadata?.annotations };
-          delete newAnnotations[key];
-          const updated: V1CronJob = {
-            ...cronJob,
-            metadata: { ...cronJob.metadata, annotations: newAnnotations },
-            spec: { ...spec, jobTemplate: spec.jobTemplate }
-          };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newAnnotations = { ...current.metadata?.annotations };
+            delete newAnnotations[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                annotations: newAnnotations
+              }
+            };
+          });
         }}
       />
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { ClusterResource } from '../../../../api/types';
 import type { V1ConfigMap } from '../../../../api/k8s-types';
 import { useClusterStore } from '../../../../store/useClusterStore';
@@ -23,18 +23,17 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  configMap: V1ConfigMap;
-  onApply: (updatedRaw: V1ConfigMap) => Promise<void>;
+  model: V1ConfigMap;
+  updateModel: (updater: (current: V1ConfigMap) => V1ConfigMap) => void;
 }
 
-export const ConfigMapOverview: React.FC<Props> = ({ resource, configMap, onApply }) => {
-  const [saving, setSaving] = useState(false);
+export const ConfigMapOverview: React.FC<Props> = ({ resource, model, updateModel }) => {
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
   
-  const metadata = configMap.metadata;
-  const data = configMap.data || {};
-  const binaryData = configMap.binaryData || {};
+  const metadata = model.metadata;
+  const data = model.data || {};
+  const binaryData = model.binaryData || {};
 
   const dataKeyCount = Object.keys(data).length;
   const binaryKeyCount = Object.keys(binaryData).length;
@@ -85,64 +84,58 @@ export const ConfigMapOverview: React.FC<Props> = ({ resource, configMap, onAppl
   const healthStatus: HealthStatus = 'healthy';
 
   // Handle label/annotation changes
-  const handleAddLabel = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(configMap)) as V1ConfigMap;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.labels) updated.metadata.labels = {};
-      updated.metadata.labels[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveLabel = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(configMap)) as V1ConfigMap;
-      if (updated.metadata?.labels) {
-        delete updated.metadata.labels[key];
+  const handleAddLabel = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        labels: {
+          ...current.metadata?.labels,
+          [key]: value
+        }
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
   };
 
-  const handleAddAnnotation = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(configMap)) as V1ConfigMap;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
-      updated.metadata.annotations[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveLabel = (key: string) => {
+    updateModel(current => {
+      const newLabels = { ...current.metadata?.labels };
+      delete newLabels[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          labels: newLabels
+        }
+      };
+    });
   };
 
-  const handleRemoveAnnotation = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(configMap)) as V1ConfigMap;
-      if (updated.metadata?.annotations) {
-        delete updated.metadata.annotations[key];
+  const handleAddAnnotation = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        annotations: {
+          ...current.metadata?.annotations,
+          [key]: value
+        }
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
+  };
+
+  const handleRemoveAnnotation = (key: string) => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
+      delete newAnnotations[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
   };
 
   return (
@@ -193,7 +186,7 @@ export const ConfigMapOverview: React.FC<Props> = ({ resource, configMap, onAppl
             <div className="flex flex-wrap gap-2">
               {usingPods.map(pod => {
                 const podPhase = pod.status as string;
-                const isReady = pod.raw?.status?.conditions?.find((c: any) => c.type === 'Ready' && c.status === 'True');
+                const isReady = pod.raw?.status?.conditions?.find((c: { type: string; status: string }) => c.type === 'Ready' && c.status === 'True');
                 
                 return (
                   <button
@@ -229,7 +222,6 @@ export const ConfigMapOverview: React.FC<Props> = ({ resource, configMap, onAppl
         editable 
         onAdd={handleAddLabel}
         onRemove={handleRemoveLabel}
-        saving={saving}
       />
 
       {/* Annotations */}
@@ -238,7 +230,6 @@ export const ConfigMapOverview: React.FC<Props> = ({ resource, configMap, onAppl
         editable 
         onAdd={handleAddAnnotation}
         onRemove={handleRemoveAnnotation}
-        saving={saving}
       />
     </div>
   );

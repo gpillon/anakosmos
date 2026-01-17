@@ -8,25 +8,25 @@ import {
   ConditionsCard, StatusBanner,
 } from '../../shared';
 import type { HealthStatus } from '../../shared';
-import { Activity, Target, TrendingUp, TrendingDown, Layers, Edit2, Save, X, Minus, Plus } from 'lucide-react';
+import { Activity, Target, TrendingUp, TrendingDown, Layers, Edit2, Check, X, Minus, Plus } from 'lucide-react';
 
 interface HPAOverviewProps {
   resource: ClusterResource;
-  hpa: V2HorizontalPodAutoscaler;
-  onApply: (hpa: V2HorizontalPodAutoscaler) => Promise<void>;
+  model: V2HorizontalPodAutoscaler;
+  updateModel: (updater: (current: V2HorizontalPodAutoscaler) => V2HorizontalPodAutoscaler) => void;
 }
 
-export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply }) => {
+export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, model, updateModel }) => {
   const resources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
 
-  const spec = hpa.spec;
-  const status = hpa.status;
+  const spec = model.spec;
+  const status = model.status;
 
-  // Editable state
+  // Local UI editing states
   const [isEditingReplicas, setIsEditingReplicas] = useState(false);
-  const [minReplicas, setMinReplicas] = useState(spec?.minReplicas ?? 1);
-  const [maxReplicas, setMaxReplicas] = useState(spec?.maxReplicas ?? 10);
+  const [localMinReplicas, setLocalMinReplicas] = useState(spec?.minReplicas ?? 1);
+  const [localMaxReplicas, setLocalMaxReplicas] = useState(spec?.maxReplicas ?? 10);
 
   // Status
   const conditions = (status?.conditions || []) as V2HorizontalPodAutoscalerCondition[];
@@ -68,23 +68,16 @@ export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply
     );
   }, [resources, targetRef, resource.namespace]);
 
-  const handleSaveReplicas = async () => {
-    if (!spec?.scaleTargetRef) return;
-    const updated: V2HorizontalPodAutoscaler = { 
-      ...hpa,
-      spec: { 
-        ...spec, 
-        minReplicas, 
-        maxReplicas,
-        scaleTargetRef: spec.scaleTargetRef 
+  const handleSaveReplicas = () => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec!,
+        minReplicas: localMinReplicas,
+        maxReplicas: localMaxReplicas
       }
-    };
-    try {
-      await onApply(updated);
-      setIsEditingReplicas(false);
-    } catch (e) {
-      console.error('Failed to update replicas:', e);
-    }
+    }));
+    setIsEditingReplicas(false);
   };
 
   return (
@@ -176,19 +169,19 @@ export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply
                 <span className="text-sm text-slate-400 w-24">Min Replicas:</span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setMinReplicas(Math.max(0, minReplicas - 1))}
+                    onClick={() => setLocalMinReplicas(Math.max(0, localMinReplicas - 1))}
                     className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded"
                   >
                     <Minus size={14} />
                   </button>
                   <input
                     type="number"
-                    value={minReplicas}
-                    onChange={(e) => setMinReplicas(Math.max(0, parseInt(e.target.value) || 0))}
+                    value={localMinReplicas}
+                    onChange={(e) => setLocalMinReplicas(Math.max(0, parseInt(e.target.value) || 0))}
                     className="w-20 bg-slate-800 border border-slate-700 rounded px-3 py-1 text-center text-slate-200"
                   />
                   <button
-                    onClick={() => setMinReplicas(minReplicas + 1)}
+                    onClick={() => setLocalMinReplicas(localMinReplicas + 1)}
                     className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded"
                   >
                     <Plus size={14} />
@@ -199,19 +192,19 @@ export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply
                 <span className="text-sm text-slate-400 w-24">Max Replicas:</span>
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setMaxReplicas(Math.max(1, maxReplicas - 1))}
+                    onClick={() => setLocalMaxReplicas(Math.max(1, localMaxReplicas - 1))}
                     className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded"
                   >
                     <Minus size={14} />
                   </button>
                   <input
                     type="number"
-                    value={maxReplicas}
-                    onChange={(e) => setMaxReplicas(Math.max(1, parseInt(e.target.value) || 1))}
+                    value={localMaxReplicas}
+                    onChange={(e) => setLocalMaxReplicas(Math.max(1, parseInt(e.target.value) || 1))}
                     className="w-20 bg-slate-800 border border-slate-700 rounded px-3 py-1 text-center text-slate-200"
                   />
                   <button
-                    onClick={() => setMaxReplicas(maxReplicas + 1)}
+                    onClick={() => setLocalMaxReplicas(localMaxReplicas + 1)}
                     className="p-1.5 bg-slate-700 hover:bg-slate-600 rounded"
                   >
                     <Plus size={14} />
@@ -223,13 +216,13 @@ export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply
                   onClick={handleSaveReplicas}
                   className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded text-white text-sm"
                 >
-                  <Save size={14} />
+                  <Check size={14} />
                   Apply
                 </button>
                 <button
                   onClick={() => {
-                    setMinReplicas(spec?.minReplicas ?? 1);
-                    setMaxReplicas(spec?.maxReplicas ?? 10);
+                    setLocalMinReplicas(spec?.minReplicas ?? 1);
+                    setLocalMaxReplicas(spec?.maxReplicas ?? 10);
                     setIsEditingReplicas(false);
                   }}
                   className="flex items-center gap-2 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-slate-300 text-sm"
@@ -257,57 +250,67 @@ export const HPAOverview: React.FC<HPAOverviewProps> = ({ resource, hpa, onApply
       </Card>
 
       {/* Metadata */}
-      <MetadataCard metadata={hpa.metadata} />
+      <MetadataCard metadata={model.metadata} />
 
       {/* Labels */}
       <LabelsCard 
-        labels={hpa.metadata?.labels}
+        labels={model.metadata?.labels}
         editable
-        onAdd={async (key, value) => {
-          if (!spec?.scaleTargetRef) return;
-          const updated: V2HorizontalPodAutoscaler = {
-            ...hpa,
-            metadata: { ...hpa.metadata, labels: { ...hpa.metadata?.labels, [key]: value } },
-            spec: { ...spec, scaleTargetRef: spec.scaleTargetRef }
-          };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              labels: {
+                ...current.metadata?.labels,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          if (!spec?.scaleTargetRef) return;
-          const newLabels = { ...hpa.metadata?.labels };
-          delete newLabels[key];
-          const updated: V2HorizontalPodAutoscaler = {
-            ...hpa,
-            metadata: { ...hpa.metadata, labels: newLabels },
-            spec: { ...spec, scaleTargetRef: spec.scaleTargetRef }
-          };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newLabels = { ...current.metadata?.labels };
+            delete newLabels[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                labels: newLabels
+              }
+            };
+          });
         }}
       />
 
       {/* Annotations */}
       <AnnotationsCard 
-        annotations={hpa.metadata?.annotations}
+        annotations={model.metadata?.annotations}
         editable
-        onAdd={async (key, value) => {
-          if (!spec?.scaleTargetRef) return;
-          const updated: V2HorizontalPodAutoscaler = {
-            ...hpa,
-            metadata: { ...hpa.metadata, annotations: { ...hpa.metadata?.annotations, [key]: value } },
-            spec: { ...spec, scaleTargetRef: spec.scaleTargetRef }
-          };
-          await onApply(updated);
+        onAdd={(key, value) => {
+          updateModel(current => ({
+            ...current,
+            metadata: {
+              ...current.metadata,
+              annotations: {
+                ...current.metadata?.annotations,
+                [key]: value
+              }
+            }
+          }));
         }}
-        onRemove={async (key) => {
-          if (!spec?.scaleTargetRef) return;
-          const newAnnotations = { ...hpa.metadata?.annotations };
-          delete newAnnotations[key];
-          const updated: V2HorizontalPodAutoscaler = {
-            ...hpa,
-            metadata: { ...hpa.metadata, annotations: newAnnotations },
-            spec: { ...spec, scaleTargetRef: spec.scaleTargetRef }
-          };
-          await onApply(updated);
+        onRemove={(key) => {
+          updateModel(current => {
+            const newAnnotations = { ...current.metadata?.annotations };
+            delete newAnnotations[key];
+            return {
+              ...current,
+              metadata: {
+                ...current.metadata,
+                annotations: newAnnotations
+              }
+            };
+          });
         }}
       />
 

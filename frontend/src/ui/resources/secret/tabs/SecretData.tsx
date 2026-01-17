@@ -4,15 +4,16 @@ import { KeyValueDataCard } from '../../shared';
 import { AlertTriangle } from 'lucide-react';
 
 interface Props {
-  secret: V1Secret;
-  onApply: (updatedRaw: V1Secret) => Promise<void>;
+  model: V1Secret;
+  updateModel: (updater: (current: V1Secret) => V1Secret) => void;
 }
 
-export const SecretData: React.FC<Props> = ({ secret, onApply }) => {
-  const handleDataUpdate = async (newData: Record<string, string>) => {
-    const updated = JSON.parse(JSON.stringify(secret)) as V1Secret;
-    updated.data = newData;
-    await onApply(updated);
+export const SecretData: React.FC<Props> = ({ model, updateModel }) => {
+  const handleDataUpdate = (newData: Record<string, string>) => {
+    updateModel(current => ({
+      ...current,
+      data: Object.keys(newData).length > 0 ? newData : undefined
+    }));
   };
 
   return (
@@ -30,7 +31,7 @@ export const SecretData: React.FC<Props> = ({ secret, onApply }) => {
       </div>
 
       <KeyValueDataCard
-        data={secret.data}
+        data={model.data}
         title="Secret Data"
         isBase64={true}
         maskValues={true}
@@ -39,9 +40,9 @@ export const SecretData: React.FC<Props> = ({ secret, onApply }) => {
         emptyMessage="No secret data"
       />
 
-      {secret.stringData && Object.keys(secret.stringData).length > 0 && (
+      {model.stringData && Object.keys(model.stringData).length > 0 && (
         <KeyValueDataCard
-          data={secret.stringData}
+          data={model.stringData}
           title="String Data (unencoded)"
           isBase64={false}
           maskValues={true}

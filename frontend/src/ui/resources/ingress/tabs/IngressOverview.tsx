@@ -7,7 +7,6 @@ import {
   Globe, 
   Shield, 
   Server,
-  RefreshCw,
   Lock,
   Network,
   ExternalLink,
@@ -29,18 +28,17 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  ingress: V1Ingress;
-  onApply: (updatedRaw: V1Ingress) => Promise<void>;
+  model: V1Ingress;
+  updateModel: (updater: (current: V1Ingress) => V1Ingress) => void;
 }
 
-export const IngressOverview: React.FC<Props> = ({ resource, ingress, onApply }) => {
-  const [saving, setSaving] = useState(false);
+export const IngressOverview: React.FC<Props> = ({ resource, model, updateModel }) => {
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
   
-  const metadata = ingress.metadata;
-  const spec = ingress.spec;
-  const status = ingress.status;
+  const metadata = model.metadata;
+  const spec = model.spec;
+  const status = model.status;
 
   // Get ingress class
   const ingressClass = spec?.ingressClassName || metadata?.annotations?.['kubernetes.io/ingress.class'] || 'default';
@@ -171,84 +169,74 @@ export const IngressOverview: React.FC<Props> = ({ resource, ingress, onApply })
   };
 
   // Handle label changes
-  const handleAddLabel = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.labels) updated.metadata.labels = {};
-      updated.metadata.labels[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleAddLabel = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        labels: {
+          ...current.metadata?.labels,
+          [key]: value
+        }
+      }
+    }));
   };
 
-  const handleRemoveLabel = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (updated.metadata?.labels) {
-        delete updated.metadata.labels[key];
-      }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveLabel = (key: string) => {
+    updateModel(current => {
+      const newLabels = { ...current.metadata?.labels };
+      delete newLabels[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          labels: newLabels
+        }
+      };
+    });
   };
 
   // Handle annotation changes
-  const handleAddAnnotation = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
-      updated.metadata.annotations[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleAddAnnotation = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        annotations: {
+          ...current.metadata?.annotations,
+          [key]: value
+        }
+      }
+    }));
   };
 
-  const handleRemoveAnnotation = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (updated.metadata?.annotations) {
-        delete updated.metadata.annotations[key];
-      }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveAnnotation = (key: string) => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
+      delete newAnnotations[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
   };
 
   // Editing ingress class
   const [editingClass, setEditingClass] = useState(false);
   const [newIngressClass, setNewIngressClass] = useState(spec?.ingressClassName || '');
 
-  const handleSaveClass = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.spec) updated.spec = {};
-      updated.spec.ingressClassName = newIngressClass || undefined;
-      await onApply(updated);
-      setEditingClass(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleSaveClass = () => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        ingressClassName: newIngressClass || undefined
+      }
+    }));
+    setEditingClass(false);
   };
 
   return (
@@ -289,11 +277,9 @@ export const IngressOverview: React.FC<Props> = ({ resource, ingress, onApply })
                 />
                 <button
                   onClick={handleSaveClass}
-                  disabled={saving}
-                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center justify-center gap-2"
+                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors flex items-center justify-center gap-2"
                 >
-                  {saving && <RefreshCw className="animate-spin" size={12} />}
-                  Save
+                  Apply
                 </button>
               </div>
             ) : (
@@ -505,7 +491,6 @@ export const IngressOverview: React.FC<Props> = ({ resource, ingress, onApply })
         editable 
         onAdd={handleAddLabel}
         onRemove={handleRemoveLabel}
-        saving={saving}
       />
 
       {/* Annotations */}
@@ -514,7 +499,6 @@ export const IngressOverview: React.FC<Props> = ({ resource, ingress, onApply })
         editable 
         onAdd={handleAddAnnotation}
         onRemove={handleRemoveAnnotation}
-        saving={saving}
       />
     </div>
   );

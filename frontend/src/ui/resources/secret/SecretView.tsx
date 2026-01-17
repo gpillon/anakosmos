@@ -3,7 +3,7 @@ import type { ClusterResource } from '../../../api/types';
 import type { V1Secret } from '../../../api/k8s-types';
 import { SecretOverview } from './tabs/SecretOverview';
 import { SecretData } from './tabs/SecretData';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface SecretViewProps {
   resource: ClusterResource;
@@ -18,19 +18,28 @@ export const secretTabs = [
 
 export const SecretView: React.FC<SecretViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1Secret>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1Secret>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -48,9 +57,30 @@ export const SecretView: React.FC<SecretViewProps> = ({ resource, activeTab }) =
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <SecretOverview key={resourceKey} resource={fullResource} secret={rawData!} onApply={applyChanges} />}
-      {activeTab === 'data' && <SecretData key={resourceKey} secret={rawData!} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <SecretOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'data' && model && (
+        <SecretData 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

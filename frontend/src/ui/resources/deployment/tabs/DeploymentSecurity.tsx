@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { ClusterResource } from '../../../../api/types';
+import type { V1Deployment } from '../../../../api/k8s-types';
 import { 
   Shield, 
   Plus, 
@@ -8,97 +9,69 @@ import {
   Lock,
   Key,
   FileKey,
-  AlertTriangle,
-  Save,
-  RefreshCw,
-  AlertCircle
+  AlertTriangle
 } from 'lucide-react';
 import { Combobox, useServiceAccountNames, useSecretNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
+  model: V1Deployment;
+  updateModel: (updater: (current: V1Deployment) => V1Deployment) => void;
 }
 
-export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
-  const raw = resource.raw;
+export const DeploymentSecurity: React.FC<Props> = ({ resource, model, updateModel }) => {
   const namespace = resource.namespace;
-  const template = raw?.spec?.template?.spec || {};
-  
-  const [serviceAccountName, setServiceAccountName] = useState<string>(template.serviceAccountName || '');
-  const [automountServiceAccountToken, setAutomountServiceAccountToken] = useState<boolean | undefined>(template.automountServiceAccountToken);
-  const [securityContext, setSecurityContext] = useState<any>(template.securityContext || {});
-  const [imagePullSecrets, setImagePullSecrets] = useState<Array<{ name: string }>>(template.imagePullSecrets || []);
-  const [hostNetwork, setHostNetwork] = useState<boolean>(template.hostNetwork || false);
-  const [hostPID, setHostPID] = useState<boolean>(template.hostPID || false);
-  const [hostIPC, setHostIPC] = useState<boolean>(template.hostIPC || false);
-  const [shareProcessNamespace, setShareProcessNamespace] = useState<boolean>(template.shareProcessNamespace || false);
-  
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
+  const template = model?.spec?.template?.spec;
   
   // Get available resources
   const serviceAccountNames = useServiceAccountNames(namespace);
   const secretNames = useSecretNames(namespace);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      const spec = updated.spec.template.spec;
-      
-      spec.serviceAccountName = serviceAccountName || undefined;
-      spec.automountServiceAccountToken = automountServiceAccountToken;
-      spec.securityContext = Object.keys(securityContext).length > 0 ? securityContext : undefined;
-      spec.imagePullSecrets = imagePullSecrets.length > 0 ? imagePullSecrets : undefined;
-      spec.hostNetwork = hostNetwork || undefined;
-      spec.hostPID = hostPID || undefined;
-      spec.hostIPC = hostIPC || undefined;
-      spec.shareProcessNamespace = shareProcessNamespace || undefined;
-      
-      await onApply(updated);
-      setHasChanges(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  // Helper to update template spec
+  const updateTemplateSpec = (updates: Record<string, unknown>) => {
+    updateModel(current => {
+      const currentSpec = current.spec?.template?.spec;
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          selector: current.spec?.selector || { matchLabels: {} },
+          template: {
+            ...current.spec?.template,
+            spec: {
+              ...currentSpec,
+              containers: currentSpec?.containers || [],
+              ...updates
+            }
+          }
+        }
+      };
+    });
   };
 
-  const markChanged = () => setHasChanges(true);
-
-  const updateSecurityContext = (updates: any) => {
-    const newCtx = { ...securityContext, ...updates };
+  const updateSecurityContext = (updates: Record<string, unknown>) => {
+    const currentCtx = template?.securityContext || {};
+    const newCtx = { ...currentCtx, ...updates };
     // Clean undefined values
     Object.keys(newCtx).forEach(k => {
-      if (newCtx[k] === undefined || newCtx[k] === false || newCtx[k] === null) {
-        delete newCtx[k];
+      if ((newCtx as Record<string, unknown>)[k] === undefined || (newCtx as Record<string, unknown>)[k] === false || (newCtx as Record<string, unknown>)[k] === null) {
+        delete (newCtx as Record<string, unknown>)[k];
       }
     });
-    setSecurityContext(newCtx);
-    markChanged();
+    updateTemplateSpec({ securityContext: Object.keys(newCtx).length > 0 ? newCtx : undefined });
   };
+
+  const serviceAccountName = template?.serviceAccountName || '';
+  const automountServiceAccountToken = template?.automountServiceAccountToken;
+  const securityContext = template?.securityContext || {};
+  const imagePullSecrets = (template?.imagePullSecrets || []) as Array<{ name: string }>;
+  const hostNetwork = template?.hostNetwork || false;
+  const hostPID = template?.hostPID || false;
+  const hostIPC = template?.hostIPC || false;
+  const shareProcessNamespace = template?.shareProcessNamespace || false;
 
   return (
     <div className="space-y-6">
-      {/* Save Banner */}
-      {hasChanges && (
-        <div className="sticky top-0 z-10 bg-amber-900/80 backdrop-blur-sm border border-amber-700 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-200">
-            <AlertCircle size={16} />
-            <span className="text-sm font-medium">You have unsaved changes</span>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-bold rounded transition-colors"
-          >
-            {saving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-      )}
-
       {/* Service Account */}
       <div className="bg-slate-900/50 rounded-xl border border-slate-800">
         <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center gap-2">
@@ -110,7 +83,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <label className="text-xs text-slate-400 mb-1 block">Service Account Name</label>
             <Combobox
               value={serviceAccountName}
-              onChange={(v) => { setServiceAccountName(v); markChanged(); }}
+              onChange={(v) => updateTemplateSpec({ serviceAccountName: v || undefined })}
               options={serviceAccountNames}
               placeholder="Select or type service account..."
               allowCustom={true}
@@ -126,8 +99,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               type="checkbox"
               checked={automountServiceAccountToken !== false}
               onChange={(e) => { 
-                setAutomountServiceAccountToken(e.target.checked ? undefined : false); 
-                markChanged(); 
+                updateTemplateSpec({ automountServiceAccountToken: e.target.checked ? undefined : false }); 
               }}
               className="w-4 h-4 rounded border-slate-600 bg-slate-800"
             />
@@ -144,7 +116,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <span className="font-semibold text-slate-200">Image Pull Secrets</span>
           </div>
           <button
-            onClick={() => { setImagePullSecrets([...imagePullSecrets, { name: '' }]); markChanged(); }}
+            onClick={() => updateTemplateSpec({ imagePullSecrets: [...imagePullSecrets, { name: '' }] })}
             className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300"
           >
             <Plus size={14} /> Add Secret
@@ -163,8 +135,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
                       onChange={(v) => {
                         const newSecrets = [...imagePullSecrets];
                         newSecrets[i] = { name: v };
-                        setImagePullSecrets(newSecrets);
-                        markChanged();
+                        updateTemplateSpec({ imagePullSecrets: newSecrets });
                       }}
                       options={secretNames}
                       placeholder="Select Secret..."
@@ -175,8 +146,8 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
                   </div>
                   <button
                     onClick={() => {
-                      setImagePullSecrets(imagePullSecrets.filter((_, idx) => idx !== i));
-                      markChanged();
+                      const newSecrets = imagePullSecrets.filter((_, idx) => idx !== i);
+                      updateTemplateSpec({ imagePullSecrets: newSecrets.length > 0 ? newSecrets : undefined });
                     }}
                     className="text-red-400 hover:text-red-300"
                   >
@@ -202,7 +173,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <label className="text-xs text-slate-400 mb-1 block">Run As User</label>
               <input
                 type="number"
-                value={securityContext.runAsUser ?? ''}
+                value={String((securityContext as Record<string, unknown>).runAsUser ?? '')}
                 onChange={(e) => updateSecurityContext({ 
                   runAsUser: e.target.value ? parseInt(e.target.value) : undefined 
                 })}
@@ -214,7 +185,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <label className="text-xs text-slate-400 mb-1 block">Run As Group</label>
               <input
                 type="number"
-                value={securityContext.runAsGroup ?? ''}
+                value={String((securityContext as Record<string, unknown>).runAsGroup ?? '')}
                 onChange={(e) => updateSecurityContext({ 
                   runAsGroup: e.target.value ? parseInt(e.target.value) : undefined 
                 })}
@@ -226,7 +197,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <label className="text-xs text-slate-400 mb-1 block">FS Group</label>
               <input
                 type="number"
-                value={securityContext.fsGroup ?? ''}
+                value={String((securityContext as Record<string, unknown>).fsGroup ?? '')}
                 onChange={(e) => updateSecurityContext({ 
                   fsGroup: e.target.value ? parseInt(e.target.value) : undefined 
                 })}
@@ -237,7 +208,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <div>
               <label className="text-xs text-slate-400 mb-1 block">FS Group Change Policy</label>
               <select
-                value={securityContext.fsGroupChangePolicy || ''}
+                value={((securityContext as Record<string, unknown>).fsGroupChangePolicy || '') as string}
                 onChange={(e) => updateSecurityContext({ 
                   fsGroupChangePolicy: e.target.value || undefined 
                 })}
@@ -255,7 +226,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <label className="flex items-center gap-2 cursor-pointer p-2 rounded hover:bg-slate-800/50">
               <input
                 type="checkbox"
-                checked={securityContext.runAsNonRoot || false}
+                checked={((securityContext as Record<string, unknown>).runAsNonRoot || false) as boolean}
                 onChange={(e) => updateSecurityContext({ runAsNonRoot: e.target.checked || undefined })}
                 className="w-4 h-4 rounded border-slate-600 bg-slate-800"
               />
@@ -268,7 +239,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
             <label className="text-xs text-slate-400 mb-1 block">Supplemental Groups</label>
             <input
               type="text"
-              value={securityContext.supplementalGroups?.join(', ') || ''}
+              value={((securityContext as Record<string, unknown>).supplementalGroups as number[] | undefined)?.join(', ') || ''}
               onChange={(e) => {
                 const groups = e.target.value.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
                 updateSecurityContext({ supplementalGroups: groups.length > 0 ? groups : undefined });
@@ -276,118 +247,6 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               placeholder="1000, 2000, 3000"
               className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white font-mono"
             />
-          </div>
-
-          {/* Sysctls */}
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs text-slate-400">Sysctls</label>
-              <button
-                onClick={() => {
-                  updateSecurityContext({
-                    sysctls: [...(securityContext.sysctls || []), { name: '', value: '' }]
-                  });
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300"
-              >
-                <Plus size={12} className="inline mr-1" /> Add
-              </button>
-            </div>
-            {(securityContext.sysctls || []).length === 0 ? (
-              <div className="text-xs text-slate-500">No sysctls configured</div>
-            ) : (
-              <div className="space-y-2">
-                {securityContext.sysctls?.map((sysctl: any, i: number) => (
-                  <div key={i} className="flex gap-2 items-center">
-                    <input
-                      type="text"
-                      value={sysctl.name}
-                      onChange={(e) => {
-                        const newSysctls = [...securityContext.sysctls];
-                        newSysctls[i] = { ...sysctl, name: e.target.value };
-                        updateSecurityContext({ sysctls: newSysctls });
-                      }}
-                      placeholder="kernel.shm_rmid_forced"
-                      className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
-                    />
-                    <input
-                      type="text"
-                      value={sysctl.value}
-                      onChange={(e) => {
-                        const newSysctls = [...securityContext.sysctls];
-                        newSysctls[i] = { ...sysctl, value: e.target.value };
-                        updateSecurityContext({ sysctls: newSysctls });
-                      }}
-                      placeholder="1"
-                      className="w-24 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
-                    />
-                    <button
-                      onClick={() => {
-                        const newSysctls = securityContext.sysctls.filter((_: any, idx: number) => idx !== i);
-                        updateSecurityContext({ sysctls: newSysctls.length > 0 ? newSysctls : undefined });
-                      }}
-                      className="text-red-400 hover:text-red-300"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* SELinux Options */}
-          <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
-            <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-              <Lock size={14} className="text-purple-400" />
-              SELinux Options
-            </h4>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">User</label>
-                <input
-                  type="text"
-                  value={securityContext.seLinuxOptions?.user || ''}
-                  onChange={(e) => updateSecurityContext({
-                    seLinuxOptions: { ...securityContext.seLinuxOptions, user: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Role</label>
-                <input
-                  type="text"
-                  value={securityContext.seLinuxOptions?.role || ''}
-                  onChange={(e) => updateSecurityContext({
-                    seLinuxOptions: { ...securityContext.seLinuxOptions, role: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Type</label>
-                <input
-                  type="text"
-                  value={securityContext.seLinuxOptions?.type || ''}
-                  onChange={(e) => updateSecurityContext({
-                    seLinuxOptions: { ...securityContext.seLinuxOptions, type: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Level</label>
-                <input
-                  type="text"
-                  value={securityContext.seLinuxOptions?.level || ''}
-                  onChange={(e) => updateSecurityContext({
-                    seLinuxOptions: { ...securityContext.seLinuxOptions, level: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                />
-              </div>
-            </div>
           </div>
 
           {/* Seccomp Profile */}
@@ -400,10 +259,10 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">Type</label>
                 <select
-                  value={securityContext.seccompProfile?.type || ''}
+                  value={((securityContext as Record<string, unknown>).seccompProfile as { type?: string } | undefined)?.type || ''}
                   onChange={(e) => updateSecurityContext({
                     seccompProfile: e.target.value ? { 
-                      ...securityContext.seccompProfile, 
+                      ...((securityContext as Record<string, unknown>).seccompProfile as Record<string, unknown> || {}), 
                       type: e.target.value 
                     } : undefined
                   })}
@@ -415,49 +274,32 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
                   <option value="Localhost">Localhost</option>
                 </select>
               </div>
-              {securityContext.seccompProfile?.type === 'Localhost' && (
-                <div>
-                  <label className="text-xs text-slate-400 mb-1 block">Localhost Profile</label>
-                  <input
-                    type="text"
-                    value={securityContext.seccompProfile?.localhostProfile || ''}
-                    onChange={(e) => updateSecurityContext({
-                      seccompProfile: { ...securityContext.seccompProfile, localhostProfile: e.target.value }
-                    })}
-                    placeholder="profiles/audit.json"
-                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white"
-                  />
-                </div>
-              )}
             </div>
           </div>
 
-          {/* Windows Options (for completeness) */}
+          {/* SELinux Options */}
           <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700/50">
-            <h4 className="text-sm font-semibold text-slate-300 mb-3">Windows Options</h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">GMSA Credential Spec Name</label>
-                <input
-                  type="text"
-                  value={securityContext.windowsOptions?.gmsaCredentialSpecName || ''}
-                  onChange={(e) => updateSecurityContext({
-                    windowsOptions: { ...securityContext.windowsOptions, gmsaCredentialSpecName: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-400 mb-1 block">Run As User Name</label>
-                <input
-                  type="text"
-                  value={securityContext.windowsOptions?.runAsUserName || ''}
-                  onChange={(e) => updateSecurityContext({
-                    windowsOptions: { ...securityContext.windowsOptions, runAsUserName: e.target.value || undefined }
-                  })}
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white"
-                />
-              </div>
+            <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+              <Lock size={14} className="text-purple-400" />
+              SELinux Options
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {(['user', 'role', 'type', 'level'] as const).map(field => (
+                <div key={field}>
+                  <label className="text-xs text-slate-400 mb-1 block capitalize">{field}</label>
+                  <input
+                    type="text"
+                    value={(((securityContext as Record<string, unknown>).seLinuxOptions as Record<string, string> | undefined)?.[field] || '')}
+                    onChange={(e) => updateSecurityContext({
+                      seLinuxOptions: { 
+                        ...((securityContext as Record<string, unknown>).seLinuxOptions as Record<string, string> || {}), 
+                        [field]: e.target.value || undefined 
+                      }
+                    })}
+                    className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -479,7 +321,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="checkbox"
                 checked={hostNetwork}
-                onChange={(e) => { setHostNetwork(e.target.checked); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ hostNetwork: e.target.checked || undefined })}
                 className="w-4 h-4 rounded border-slate-600 bg-slate-800"
               />
               <div>
@@ -491,7 +333,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="checkbox"
                 checked={hostPID}
-                onChange={(e) => { setHostPID(e.target.checked); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ hostPID: e.target.checked || undefined })}
                 className="w-4 h-4 rounded border-slate-600 bg-slate-800"
               />
               <div>
@@ -503,7 +345,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="checkbox"
                 checked={hostIPC}
-                onChange={(e) => { setHostIPC(e.target.checked); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ hostIPC: e.target.checked || undefined })}
                 className="w-4 h-4 rounded border-slate-600 bg-slate-800"
               />
               <div>
@@ -515,7 +357,7 @@ export const DeploymentSecurity: React.FC<Props> = ({ resource, onApply }) => {
               <input
                 type="checkbox"
                 checked={shareProcessNamespace}
-                onChange={(e) => { setShareProcessNamespace(e.target.checked); markChanged(); }}
+                onChange={(e) => updateTemplateSpec({ shareProcessNamespace: e.target.checked || undefined })}
                 className="w-4 h-4 rounded border-slate-600 bg-slate-800"
               />
               <div>

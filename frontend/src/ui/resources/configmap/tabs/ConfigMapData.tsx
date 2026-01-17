@@ -3,21 +3,22 @@ import type { V1ConfigMap } from '../../../../api/k8s-types';
 import { KeyValueDataCard } from '../../shared';
 
 interface Props {
-  configMap: V1ConfigMap;
-  onApply: (updatedRaw: V1ConfigMap) => Promise<void>;
+  model: V1ConfigMap;
+  updateModel: (updater: (current: V1ConfigMap) => V1ConfigMap) => void;
 }
 
-export const ConfigMapData: React.FC<Props> = ({ configMap, onApply }) => {
-  const handleDataUpdate = async (newData: Record<string, string>) => {
-    const updated = JSON.parse(JSON.stringify(configMap)) as V1ConfigMap;
-    updated.data = newData;
-    await onApply(updated);
+export const ConfigMapData: React.FC<Props> = ({ model, updateModel }) => {
+  const handleDataUpdate = (newData: Record<string, string>) => {
+    updateModel(current => ({
+      ...current,
+      data: Object.keys(newData).length > 0 ? newData : undefined
+    }));
   };
 
   return (
     <div className="space-y-6">
       <KeyValueDataCard
-        data={configMap.data}
+        data={model.data}
         title="ConfigMap Data"
         isBase64={false}
         maskValues={false}
@@ -26,9 +27,9 @@ export const ConfigMapData: React.FC<Props> = ({ configMap, onApply }) => {
         emptyMessage="No data keys defined"
       />
 
-      {configMap.binaryData && Object.keys(configMap.binaryData).length > 0 && (
+      {model.binaryData && Object.keys(model.binaryData).length > 0 && (
         <KeyValueDataCard
-          data={configMap.binaryData}
+          data={model.binaryData}
           title="Binary Data"
           isBase64={true}
           maskValues={true}

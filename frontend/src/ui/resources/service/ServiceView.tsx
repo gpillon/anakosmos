@@ -3,7 +3,7 @@ import type { ClusterResource } from '../../../api/types';
 import type { V1Service } from '../../../api/k8s-types';
 import { ServiceOverview } from './tabs/ServiceOverview';
 import { ServicePorts } from './tabs/ServicePorts';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface ServiceViewProps {
   resource: ClusterResource;
@@ -18,19 +18,28 @@ export const serviceTabs = [
 
 export const ServiceView: React.FC<ServiceViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1Service>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1Service>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -48,9 +57,30 @@ export const ServiceView: React.FC<ServiceViewProps> = ({ resource, activeTab })
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <ServiceOverview key={resourceKey} resource={fullResource} service={rawData!} onApply={applyChanges} />}
-      {activeTab === 'ports' && <ServicePorts key={resourceKey} service={rawData!} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <ServiceOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'ports' && model && (
+        <ServicePorts 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

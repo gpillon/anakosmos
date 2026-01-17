@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useMemo } from 'react';
 import { useResourceDetailsStore } from '../store/useResourceDetailsStore';
 import { X, Maximize2, Minimize2, Layers, Radio } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -17,16 +17,41 @@ import { GenericView, genericTabs } from './resources/generic/GenericView';
 import type { ClusterResource } from '../api/types';
 import { useClusterStore } from '../store/useClusterStore';
 
+// Map resource kinds to their specific views (defined outside component to avoid recreation)
+const viewMap: Record<string, { view: React.FC<{ resource: ClusterResource; activeTab: string }>; tabs: Array<{ id: string; label: string }> }> = {
+  'Deployment': { view: DeploymentView, tabs: deploymentTabs },
+  'Service': { view: ServiceView, tabs: serviceTabs },
+  'Pod': { view: PodView, tabs: podTabs },
+  'Ingress': { view: IngressView, tabs: ingressTabs },
+  'ConfigMap': { view: ConfigMapView, tabs: configMapTabs },
+  'Secret': { view: SecretView, tabs: secretTabs },
+  'Job': { view: JobView, tabs: jobTabs },
+  'CronJob': { view: CronJobView, tabs: cronJobTabs },
+  'HorizontalPodAutoscaler': { view: HPAView, tabs: hpaTabs },
+  'Application': { view: ApplicationView, tabs: applicationTabs },
+  'HelmRelease': { view: HelmReleaseView, tabs: helmReleaseTabs },
+};
+
 export const ResourceDetailsWindow: React.FC = () => {
   const { isOpen, resourceId, closeDetails, activeTab, setActiveTab } = useResourceDetailsStore();
   const [isMinimized, setIsMinimized] = React.useState(false);
   const [isWatching, setIsWatching] = React.useState(false);
   const cleanupRef = useRef<(() => void) | null>(null);
   
+  // Track the current watch target to avoid restarting unnecessarily
+  const watchTargetRef = useRef<string | null>(null);
+  
   // Get the live resource from the main store
   const resource = useClusterStore(state => resourceId ? state.resources[resourceId] : null);
   const client = useClusterStore(state => state.client);
   const updateResourceRaw = useClusterStore(state => state.updateResourceRaw);
+
+  // Create a stable watch key that only changes when the actual resource identity changes
+  // NOT when the resource data (raw) changes
+  const watchKey = useMemo(() => {
+    if (!resource) return null;
+    return `${resource.kind}/${resource.namespace}/${resource.name}`;
+  }, [resource?.kind, resource?.namespace, resource?.name]);
 
   // Auto-maximize when resourceId changes (new resource opened)
   useEffect(() => {
@@ -36,33 +61,58 @@ export const ResourceDetailsWindow: React.FC = () => {
   }, [resourceId]);
 
   // Start/stop single resource watch when window opens/closes
+  // CRITICAL: Only restart watch when the IDENTITY changes, not the data
   useEffect(() => {
-    if (isOpen && resource && client) {
-      // Start dedicated watch for this resource
-      const cleanup = client.startSingleResourceWatch(
-        resource.kind,
-        resource.namespace,
-        resource.name,
-        (event) => {
-          if (event.type === 'MODIFIED' || event.type === 'ADDED') {
-            // Update the resource in the store with full raw data
-            updateResourceRaw(resource.id, event.resource);
-          }
-        }
-      );
-      
-      cleanupRef.current = cleanup;
-      setIsWatching(true);
-      
-      return () => {
-        if (cleanupRef.current) {
-          cleanupRef.current();
-          cleanupRef.current = null;
-        }
-        setIsWatching(false);
-      };
+    // Skip if not open or no resource
+    if (!isOpen || !resource || !client || !watchKey) {
+      // Cleanup existing watch if conditions are no longer met
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+        watchTargetRef.current = null;
+      }
+      setIsWatching(false);
+      return;
     }
-  }, [isOpen, resource?.id, resource?.kind, resource?.namespace, resource?.name, client, updateResourceRaw]);
+
+    // Skip if we're already watching this exact resource
+    if (watchTargetRef.current === watchKey) {
+      return;
+    }
+
+    // Cleanup any existing watch before starting a new one
+    if (cleanupRef.current) {
+      cleanupRef.current();
+      cleanupRef.current = null;
+    }
+
+    // Start dedicated watch for this resource
+    const resourceIdCaptured = resource.id; // Capture for callback
+    const cleanup = client.startSingleResourceWatch(
+      resource.kind,
+      resource.namespace,
+      resource.name,
+      (event) => {
+        if (event.type === 'MODIFIED' || event.type === 'ADDED') {
+          // Update the resource in the store with full raw data
+          updateResourceRaw(resourceIdCaptured, event.resource);
+        }
+      }
+    );
+    
+    cleanupRef.current = cleanup;
+    watchTargetRef.current = watchKey;
+    setIsWatching(true);
+    
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+      watchTargetRef.current = null;
+      setIsWatching(false);
+    };
+  }, [isOpen, watchKey, client, updateResourceRaw, resource?.id, resource?.kind, resource?.namespace, resource?.name]);
 
   // Cleanup on close
   const handleClose = () => {
@@ -70,6 +120,7 @@ export const ResourceDetailsWindow: React.FC = () => {
       cleanupRef.current();
       cleanupRef.current = null;
     }
+    watchTargetRef.current = null;
     setIsWatching(false);
     closeDetails();
   };
@@ -77,28 +128,9 @@ export const ResourceDetailsWindow: React.FC = () => {
   if (!isOpen || !resource) return null;
 
   // Determine which component and tabs to use
-  let ViewComponent: React.FC<{ resource: ClusterResource; activeTab: string }> = GenericView;
-  let tabs = genericTabs;
-
-  // Map resource kinds to their specific views
-  const viewMap: Record<string, { view: React.FC<{ resource: ClusterResource; activeTab: string }>; tabs: Array<{ id: string; label: string }> }> = {
-    'Deployment': { view: DeploymentView, tabs: deploymentTabs },
-    'Service': { view: ServiceView, tabs: serviceTabs },
-    'Pod': { view: PodView, tabs: podTabs },
-    'Ingress': { view: IngressView, tabs: ingressTabs },
-    'ConfigMap': { view: ConfigMapView, tabs: configMapTabs },
-    'Secret': { view: SecretView, tabs: secretTabs },
-    'Job': { view: JobView, tabs: jobTabs },
-    'CronJob': { view: CronJobView, tabs: cronJobTabs },
-    'HorizontalPodAutoscaler': { view: HPAView, tabs: hpaTabs },
-    'Application': { view: ApplicationView, tabs: applicationTabs },
-    'HelmRelease': { view: HelmReleaseView, tabs: helmReleaseTabs },
-  };
-
-  if (viewMap[resource.kind]) {
-    ViewComponent = viewMap[resource.kind].view;
-    tabs = viewMap[resource.kind].tabs;
-  }
+  const viewConfig = viewMap[resource.kind] || { view: GenericView, tabs: genericTabs };
+  const ViewComponent = viewConfig.view;
+  const tabs = viewConfig.tabs;
 
   return (
     <div className={clsx(

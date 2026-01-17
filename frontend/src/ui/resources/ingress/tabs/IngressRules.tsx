@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import type { V1Ingress } from '../../../../api/k8s-types';
+import type { V1Ingress, V1HTTPIngressPath, V1IngressRule } from '../../../../api/k8s-types';
 import { useClusterStore } from '../../../../store/useClusterStore';
 import { 
   Route, 
@@ -8,7 +8,6 @@ import {
   ChevronRight, 
   Plus, 
   Trash2, 
-  RefreshCw,
   ArrowRight,
   Lock,
   Edit2,
@@ -24,22 +23,21 @@ import {
 import { clsx } from 'clsx';
 
 interface Props {
-  ingress: V1Ingress;
-  onApply: (updatedRaw: V1Ingress) => Promise<void>;
+  model: V1Ingress;
+  updateModel: (updater: (current: V1Ingress) => V1Ingress) => void;
 }
 
-export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
-  const [saving, setSaving] = useState(false);
+export const IngressRules: React.FC<Props> = ({ model, updateModel }) => {
   const [expandedRules, setExpandedRules] = useState<Set<number>>(new Set([0]));
   const [editingPath, setEditingPath] = useState<{ ruleIndex: number; pathIndex: number } | null>(null);
   const [addingRule, setAddingRule] = useState(false);
   const [addingPath, setAddingPath] = useState<number | null>(null);
   
   const allResources = useClusterStore(state => state.resources);
-  const spec = ingress.spec;
+  const spec = model.spec;
   const rules = spec?.rules || [];
   const tlsHosts = spec?.tls?.flatMap(t => t.hosts || []) || [];
-  const namespace = ingress.metadata?.namespace || 'default';
+  const namespace = model.metadata?.namespace || 'default';
 
   // Get available services in the same namespace
   const availableServices = useMemo(() => {
@@ -85,133 +83,137 @@ export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
   };
 
   // Add a new rule
-  const handleAddRule = async () => {
+  const handleAddRule = () => {
     if (!newRule.serviceName.trim()) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.spec) updated.spec = {};
-      if (!updated.spec.rules) updated.spec.rules = [];
-      
-      const portValue = parseInt(newRule.servicePort);
-      const isPortNumber = !isNaN(portValue);
+    const portValue = parseInt(newRule.servicePort);
+    const isPortNumber = !isNaN(portValue);
 
-      const newRuleObj: any = {
-        http: { 
-          paths: [{
-            path: newRule.path.trim(),
-            pathType: newRule.pathType,
-            backend: {
-              service: {
-                name: newRule.serviceName.trim(),
-                port: isPortNumber 
-                  ? { number: portValue }
-                  : { name: newRule.servicePort.trim() }
-              }
+    const newRuleObj: V1IngressRule = {
+      host: newRule.host.trim() || undefined,
+      http: { 
+        paths: [{
+          path: newRule.path.trim(),
+          pathType: newRule.pathType,
+          backend: {
+            service: {
+              name: newRule.serviceName.trim(),
+              port: isPortNumber 
+                ? { number: portValue }
+                : { name: newRule.servicePort.trim() }
             }
-          }]
+          }
+        }]
+      }
+    };
+
+    updateModel(current => {
+      const newRules = [...(current.spec?.rules || []), newRuleObj];
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          rules: newRules
         }
       };
-
-      if (newRule.host.trim()) {
-        newRuleObj.host = newRule.host.trim();
-      }
-
-      updated.spec.rules.push(newRuleObj);
-      
-      await onApply(updated);
-      setNewRule({ 
-        host: '', 
-        path: '/', 
-        pathType: 'Prefix',
-        serviceName: '', 
-        servicePort: '' 
-      });
-      setAddingRule(false);
-      // Expand the new rule
-      setExpandedRules(new Set([...expandedRules, updated.spec.rules.length - 1]));
-    } catch (e) {
-      console.error(e);
-      alert('Failed to add rule: ' + (e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+    });
+    
+    setNewRule({ 
+      host: '', 
+      path: '/', 
+      pathType: 'Prefix',
+      serviceName: '', 
+      servicePort: '' 
+    });
+    setAddingRule(false);
+    // Expand the new rule
+    setExpandedRules(new Set([...expandedRules, rules.length]));
   };
 
   // Delete a rule
-  const handleDeleteRule = async (ruleIndex: number) => {
+  const handleDeleteRule = (ruleIndex: number) => {
     if (!confirm(`Delete rule for host "${rules[ruleIndex]?.host || '*'}"?`)) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (updated.spec?.rules) {
-        updated.spec.rules.splice(ruleIndex, 1);
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        rules: current.spec?.rules?.filter((_, i) => i !== ruleIndex)
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
   };
 
   // Add a path to a rule
-  const handleAddPath = async (ruleIndex: number) => {
+  const handleAddPath = (ruleIndex: number) => {
     if (!newPath.path.trim() || !newPath.serviceName.trim()) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (!updated.spec?.rules?.[ruleIndex]) return;
-      if (!updated.spec.rules[ruleIndex].http) {
-        updated.spec.rules[ruleIndex].http = { paths: [] };
-      }
-      
-      const portValue = parseInt(newPath.servicePort);
-      const isPortNumber = !isNaN(portValue);
-      
-      updated.spec.rules[ruleIndex].http!.paths.push({
-        path: newPath.path.trim(),
-        pathType: newPath.pathType,
-        backend: {
-          service: {
-            name: newPath.serviceName.trim(),
-            port: isPortNumber 
-              ? { number: portValue }
-              : { name: newPath.servicePort.trim() }
-          }
+    const portValue = parseInt(newPath.servicePort);
+    const isPortNumber = !isNaN(portValue);
+    
+    const newPathObj: V1HTTPIngressPath = {
+      path: newPath.path.trim(),
+      pathType: newPath.pathType,
+      backend: {
+        service: {
+          name: newPath.serviceName.trim(),
+          port: isPortNumber 
+            ? { number: portValue }
+            : { name: newPath.servicePort.trim() }
         }
-      });
-      
-      await onApply(updated);
-      setNewPath({ path: '/', pathType: 'Prefix', serviceName: '', servicePort: '' });
-      setAddingPath(null);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+      }
+    };
+
+    updateModel(current => {
+      const newRules = [...(current.spec?.rules || [])];
+      if (newRules[ruleIndex]) {
+        if (!newRules[ruleIndex].http) {
+          newRules[ruleIndex] = { ...newRules[ruleIndex], http: { paths: [] } };
+        }
+        newRules[ruleIndex] = {
+          ...newRules[ruleIndex],
+          http: {
+            ...newRules[ruleIndex].http,
+            paths: [...(newRules[ruleIndex].http?.paths || []), newPathObj]
+          }
+        };
+      }
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          rules: newRules
+        }
+      };
+    });
+    
+    setNewPath({ path: '/', pathType: 'Prefix', serviceName: '', servicePort: '' });
+    setAddingPath(null);
   };
 
   // Delete a path
-  const handleDeletePath = async (ruleIndex: number, pathIndex: number) => {
+  const handleDeletePath = (ruleIndex: number, pathIndex: number) => {
     const path = rules[ruleIndex]?.http?.paths?.[pathIndex];
     if (!confirm(`Delete path "${path?.path || '/'}"?`)) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      if (updated.spec?.rules?.[ruleIndex]?.http?.paths) {
-        updated.spec.rules[ruleIndex].http!.paths.splice(pathIndex, 1);
+    updateModel(current => {
+      const newRules = [...(current.spec?.rules || [])];
+      if (newRules[ruleIndex]?.http?.paths) {
+        newRules[ruleIndex] = {
+          ...newRules[ruleIndex],
+          http: {
+            ...newRules[ruleIndex].http,
+            paths: newRules[ruleIndex].http!.paths.filter((_, i) => i !== pathIndex)
+          }
+        };
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          rules: newRules
+        }
+      };
+    });
   };
 
   // Start editing a path
@@ -229,36 +231,46 @@ export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
   };
 
   // Save edited path
-  const handleSaveEditPath = async () => {
+  const handleSaveEditPath = () => {
     if (!editingPath || !editPath.path.trim() || !editPath.serviceName.trim()) return;
     
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(ingress)) as V1Ingress;
-      const path = updated.spec?.rules?.[editingPath.ruleIndex]?.http?.paths?.[editingPath.pathIndex];
-      if (!path) return;
-      
-      const portValue = parseInt(editPath.servicePort);
-      const isPortNumber = !isNaN(portValue);
-      
-      path.path = editPath.path.trim();
-      path.pathType = editPath.pathType;
-      path.backend = {
-        service: {
-          name: editPath.serviceName.trim(),
-          port: isPortNumber 
-            ? { number: portValue }
-            : { name: editPath.servicePort.trim() }
+    const portValue = parseInt(editPath.servicePort);
+    const isPortNumber = !isNaN(portValue);
+    
+    updateModel(current => {
+      const newRules = [...(current.spec?.rules || [])];
+      if (newRules[editingPath.ruleIndex]?.http?.paths?.[editingPath.pathIndex]) {
+        const newPaths = [...(newRules[editingPath.ruleIndex].http?.paths || [])];
+        newPaths[editingPath.pathIndex] = {
+          path: editPath.path.trim(),
+          pathType: editPath.pathType,
+          backend: {
+            service: {
+              name: editPath.serviceName.trim(),
+              port: isPortNumber 
+                ? { number: portValue }
+                : { name: editPath.servicePort.trim() }
+            }
+          }
+        };
+        newRules[editingPath.ruleIndex] = {
+          ...newRules[editingPath.ruleIndex],
+          http: {
+            ...newRules[editingPath.ruleIndex].http,
+            paths: newPaths
+          }
+        };
+      }
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          rules: newRules
         }
       };
-      
-      await onApply(updated);
-      setEditingPath(null);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    });
+    
+    setEditingPath(null);
   };
 
   // Get path type badge color
@@ -386,10 +398,9 @@ export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
                 </button>
                 <button
                   onClick={handleAddRule}
-                  disabled={saving || !newRule.serviceName.trim()}
+                  disabled={!newRule.serviceName.trim()}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
                 >
-                  {saving && <RefreshCw className="animate-spin" size={12} />}
                   Add Rule
                 </button>
               </div>
@@ -493,10 +504,9 @@ export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
                             <div className="flex gap-2">
                               <button
                                 onClick={() => handleAddPath(ruleIndex)}
-                                disabled={saving || !newPath.serviceName.trim()}
+                                disabled={!newPath.serviceName.trim()}
                                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
                               >
-                                {saving && <RefreshCw className="animate-spin" size={10} />}
                                 Add Path
                               </button>
                               <button
@@ -558,11 +568,10 @@ export const IngressRules: React.FC<Props> = ({ ingress, onApply }) => {
                                 <div className="flex gap-2">
                                   <button
                                     onClick={handleSaveEditPath}
-                                    disabled={saving}
-                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
                                   >
-                                    {saving ? <RefreshCw className="animate-spin" size={10} /> : <Check size={10} />}
-                                    Save
+                                    <Check size={10} />
+                                    Apply
                                   </button>
                                   <button
                                     onClick={() => setEditingPath(null)}

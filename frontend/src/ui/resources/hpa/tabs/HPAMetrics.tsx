@@ -5,8 +5,8 @@ import { BarChart3, Cpu, HardDrive, Box, Globe, Server } from 'lucide-react';
 import { clsx } from 'clsx';
 
 interface HPAMetricsProps {
-  hpa: V2HorizontalPodAutoscaler;
-  onApply: (hpa: V2HorizontalPodAutoscaler) => Promise<void>;
+  model: V2HorizontalPodAutoscaler;
+  updateModel: (updater: (current: V2HorizontalPodAutoscaler) => V2HorizontalPodAutoscaler) => void;
 }
 
 const getMetricIcon = (type: string) => {
@@ -169,9 +169,9 @@ const MetricCard: React.FC<{ spec: V2MetricSpec; status?: V2MetricStatus }> = ({
   );
 };
 
-export const HPAMetrics: React.FC<HPAMetricsProps> = ({ hpa }) => {
-  const spec = hpa.spec;
-  const status = hpa.status;
+export const HPAMetrics: React.FC<HPAMetricsProps> = ({ model }) => {
+  const spec = model.spec;
+  const status = model.status;
 
   const metrics = spec?.metrics || [];
   const currentMetrics = status?.currentMetrics || [];

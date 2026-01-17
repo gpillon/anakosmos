@@ -56,7 +56,21 @@ export { ResourceTopBar } from './ResourceTopBar';
 
 // Resource view infrastructure (hook + layout)
 export { useResourceView } from './useResourceView';
+export { useResourceModel } from './useResourceModel';
 export { ResourceViewLayout } from './ResourceViewLayout';
+export { SaveBar } from './SaveBar';
+
+// Error handling
+export { ErrorBanner, FieldErrorIndicator, withFieldError } from './ErrorBanner';
+export { 
+  ValidationErrorProvider, 
+  useValidationErrors, 
+  useFieldError, 
+  parseKubernetesError,
+  fieldPath,
+  type ValidationError,
+  type KubernetesError,
+} from './ValidationErrorContext';
 
 // Owner/Owned resources components
 export { OwnerReferencesCard } from './OwnerReferencesCard';

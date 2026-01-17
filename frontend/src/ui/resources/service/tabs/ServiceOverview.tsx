@@ -8,7 +8,6 @@ import {
   Globe, 
   Shield, 
   Server,
-  RefreshCw,
   Tag,
   Box,
   ExternalLink
@@ -28,19 +27,22 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  service: V1Service;
-  onApply: (updatedRaw: V1Service) => Promise<void>;
+  model: V1Service;
+  updateModel: (updater: (current: V1Service) => V1Service) => void;
 }
 
-export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply }) => {
-  const [saving, setSaving] = useState(false);
+export const ServiceOverview: React.FC<Props> = ({ resource, model, updateModel }) => {
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
   
-  const metadata = service.metadata;
-  const spec = service.spec;
-  const status = service.status;
+  const metadata = model.metadata;
+  const spec = model.spec;
+  const status = model.status;
   const selector = spec?.selector as Record<string, string> | undefined;
+
+  // Local editing states for inline edits
+  const [editingType, setEditingType] = useState(false);
+  const [localServiceType, setLocalServiceType] = useState(spec?.type || 'ClusterIP');
 
   // Find pods matching the service selector
   const getMatchingPods = () => {
@@ -99,84 +101,71 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
   };
 
   // Handle label changes
-  const handleAddLabel = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.labels) updated.metadata.labels = {};
-      updated.metadata.labels[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleAddLabel = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        labels: {
+          ...current.metadata?.labels,
+          [key]: value
+        }
+      }
+    }));
   };
 
-  const handleRemoveLabel = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (updated.metadata?.labels) {
-        delete updated.metadata.labels[key];
-      }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveLabel = (key: string) => {
+    updateModel(current => {
+      const newLabels = { ...current.metadata?.labels };
+      delete newLabels[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          labels: newLabels
+        }
+      };
+    });
   };
 
   // Handle annotation changes
-  const handleAddAnnotation = async (key: string, value: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (!updated.metadata) updated.metadata = {};
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
-      updated.metadata.annotations[key] = value;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveAnnotation = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (updated.metadata?.annotations) {
-        delete updated.metadata.annotations[key];
+  const handleAddAnnotation = (key: string, value: string) => {
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        annotations: {
+          ...current.metadata?.annotations,
+          [key]: value
+        }
       }
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    }));
   };
 
-  // Editing service type
-  const [editingType, setEditingType] = useState(false);
-  const [serviceType, setServiceType] = useState(spec?.type || 'ClusterIP');
+  const handleRemoveAnnotation = (key: string) => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
+      delete newAnnotations[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
+  };
 
-  const handleSaveType = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(service)) as V1Service;
-      if (!updated.spec) updated.spec = {};
-      updated.spec.type = serviceType;
-      await onApply(updated);
-      setEditingType(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  // Apply service type change
+  const handleApplyType = () => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        type: localServiceType as 'ClusterIP' | 'NodePort' | 'LoadBalancer' | 'ExternalName'
+      }
+    }));
+    setEditingType(false);
   };
 
   return (
@@ -209,8 +198,8 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
             {editingType ? (
               <div className="space-y-3">
                 <select
-                  value={serviceType}
-                  onChange={(e) => setServiceType(e.target.value)}
+                  value={localServiceType}
+                  onChange={(e) => setLocalServiceType(e.target.value)}
                   className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                 >
                   <option value="ClusterIP">ClusterIP</option>
@@ -219,12 +208,10 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
                   <option value="ExternalName">ExternalName</option>
                 </select>
                 <button
-                  onClick={handleSaveType}
-                  disabled={saving}
-                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center justify-center gap-2"
+                  onClick={handleApplyType}
+                  className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors"
                 >
-                  {saving && <RefreshCw className="animate-spin" size={12} />}
-                  Save
+                  Apply
                 </button>
               </div>
             ) : (
@@ -330,7 +317,7 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
             <div className="flex flex-wrap gap-2">
               {matchingPods.map(pod => {
                 const podPhase = pod.status as string;
-                const isReady = pod.raw?.status?.conditions?.find((c: any) => c.type === 'Ready' && c.status === 'True');
+                const isReady = pod.raw?.status?.conditions?.find((c: { type: string; status: string }) => c.type === 'Ready' && c.status === 'True');
                 
                 return (
                   <button
@@ -383,7 +370,6 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
         editable 
         onAdd={handleAddLabel}
         onRemove={handleRemoveLabel}
-        saving={saving}
       />
 
       {/* Annotations */}
@@ -392,7 +378,6 @@ export const ServiceOverview: React.FC<Props> = ({ resource, service, onApply })
         editable 
         onAdd={handleAddAnnotation}
         onRemove={handleRemoveAnnotation}
-        saving={saving}
       />
     </div>
   );

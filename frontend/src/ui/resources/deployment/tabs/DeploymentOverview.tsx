@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ClusterResource } from '../../../../api/types';
+import type { V1Deployment } from '../../../../api/k8s-types';
 import { useClusterStore } from '../../../../store/useClusterStore';
 import { useResourceDetailsStore } from '../../../../store/useResourceDetailsStore';
 import { 
@@ -7,8 +8,6 @@ import {
   CheckCircle2, 
   XCircle, 
   AlertCircle, 
-  Scale,
-  RefreshCw,
   Tag,
   Calendar,
   GitBranch,
@@ -24,32 +23,22 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
+  model: V1Deployment;
+  updateModel: (updater: (current: V1Deployment) => V1Deployment) => void;
 }
 
-export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
-  const raw = resource.raw;
-  const spec = raw?.spec || {};
-  const status = raw?.status || {};
-  const metadata = raw?.metadata || {};
+export const DeploymentOverview: React.FC<Props> = ({ resource, model, updateModel }) => {
+  const spec = model.spec;
+  const status = model.status;
+  const metadata = model.metadata;
 
   // Store access for ReplicaSets
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
 
-  const [replicas, setReplicas] = useState(spec.replicas ?? 1);
-  const [saving, setSaving] = useState(false);
-  
-  // Strategy State
+  // UI editing states (not data states)
   const [editingStrategy, setEditingStrategy] = useState(false);
-  const [strategyType, setStrategyType] = useState(spec.strategy?.type || 'RollingUpdate');
-  const [maxSurge, setMaxSurge] = useState(spec.strategy?.rollingUpdate?.maxSurge || '25%');
-  const [maxUnavailable, setMaxUnavailable] = useState(spec.strategy?.rollingUpdate?.maxUnavailable || '25%');
-  
-  // History Limit State
   const [editingHistoryLimit, setEditingHistoryLimit] = useState(false);
-  const [revisionHistoryLimit, setRevisionHistoryLimit] = useState(spec.revisionHistoryLimit ?? 10);
-
   const [editingLabels, setEditingLabels] = useState(false);
   const [editingAnnotations, setEditingAnnotations] = useState(false);
   const [newLabelKey, setNewLabelKey] = useState('');
@@ -57,127 +46,117 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
   const [newAnnotationKey, setNewAnnotationKey] = useState('');
   const [newAnnotationValue, setNewAnnotationValue] = useState('');
 
-  const currentReplicas = spec.replicas ?? 1;
+  // Local UI state for editing (will sync to model when needed)
+  const [localStrategyType, setLocalStrategyType] = useState(spec?.strategy?.type || 'RollingUpdate');
+  const [localMaxSurge, setLocalMaxSurge] = useState(spec?.strategy?.rollingUpdate?.maxSurge || '25%');
+  const [localMaxUnavailable, setLocalMaxUnavailable] = useState(spec?.strategy?.rollingUpdate?.maxUnavailable || '25%');
+  const [localRevisionHistoryLimit, setLocalRevisionHistoryLimit] = useState(spec?.revisionHistoryLimit ?? 10);
 
-  const handleScale = async () => {
-    if (replicas === currentReplicas) return;
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      updated.spec.replicas = replicas;
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const currentReplicas = spec?.replicas ?? 1;
+
+  // Helper to update spec while preserving required fields
+  const updateSpec = (updates: Record<string, unknown>) => {
+    updateModel(current => ({
+      ...current,
+      spec: {
+        ...current.spec,
+        selector: current.spec?.selector || { matchLabels: {} },
+        template: current.spec?.template || { spec: { containers: [] } },
+        ...updates
+      }
+    }));
   };
 
-  const handleAddLabel = async () => {
+  // Update replicas directly in model
+  const handleReplicasChange = (newReplicas: number) => {
+    updateSpec({ replicas: Math.max(0, newReplicas) });
+  };
+
+  // Apply strategy changes to model
+  const handleApplyStrategy = () => {
+    updateSpec({
+      strategy: {
+        type: localStrategyType as 'RollingUpdate' | 'Recreate',
+        ...(localStrategyType === 'RollingUpdate' ? {
+          rollingUpdate: {
+            maxSurge: localMaxSurge,
+            maxUnavailable: localMaxUnavailable
+          }
+        } : {})
+      }
+    });
+    setEditingStrategy(false);
+  };
+
+  // Apply history limit to model
+  const handleApplyHistoryLimit = () => {
+    const limit = parseInt(String(localRevisionHistoryLimit), 10);
+    if (!isNaN(limit)) {
+      updateSpec({ revisionHistoryLimit: limit });
+    }
+    setEditingHistoryLimit(false);
+  };
+
+  // Label management
+  const handleAddLabel = () => {
     if (!newLabelKey.trim()) return;
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      if (!updated.metadata.labels) updated.metadata.labels = {};
-      updated.metadata.labels[newLabelKey] = newLabelValue;
-      await onApply(updated);
-      setNewLabelKey('');
-      setNewLabelValue('');
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        labels: {
+          ...current.metadata?.labels,
+          [newLabelKey]: newLabelValue
+        }
+      }
+    }));
+    setNewLabelKey('');
+    setNewLabelValue('');
   };
 
-  const handleRemoveLabel = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      delete updated.metadata.labels[key];
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleAddAnnotation = async () => {
-    if (!newAnnotationKey.trim()) return;
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      if (!updated.metadata.annotations) updated.metadata.annotations = {};
-      updated.metadata.annotations[newAnnotationKey] = newAnnotationValue;
-      await onApply(updated);
-      setNewAnnotationKey('');
-      setNewAnnotationValue('');
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleRemoveAnnotation = async (key: string) => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      delete updated.metadata.annotations[key];
-      await onApply(updated);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleSaveStrategy = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      
-      // Update Strategy
-      updated.spec.strategy = {
-        type: strategyType,
+  const handleRemoveLabel = (key: string) => {
+    updateModel(current => {
+      const newLabels = { ...current.metadata?.labels };
+      delete newLabels[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          labels: newLabels
+        }
       };
-      
-      if (strategyType === 'RollingUpdate') {
-        updated.spec.strategy.rollingUpdate = {
-          maxSurge: maxSurge,
-          maxUnavailable: maxUnavailable
-        };
-      }
-
-      await onApply(updated);
-      setEditingStrategy(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+    });
   };
 
-  const handleSaveHistoryLimit = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      
-      // Update Revision History Limit
-      // Ensure it's a number
-      const limit = parseInt(String(revisionHistoryLimit), 10);
-      if (!isNaN(limit)) {
-        updated.spec.revisionHistoryLimit = limit;
+  // Annotation management
+  const handleAddAnnotation = () => {
+    if (!newAnnotationKey.trim()) return;
+    updateModel(current => ({
+      ...current,
+      metadata: {
+        ...current.metadata,
+        annotations: {
+          ...current.metadata?.annotations,
+          [newAnnotationKey]: newAnnotationValue
+        }
       }
+    }));
+    setNewAnnotationKey('');
+    setNewAnnotationValue('');
+  };
 
-      await onApply(updated);
-      setEditingHistoryLimit(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const handleRemoveAnnotation = (key: string) => {
+    updateModel(current => {
+      const newAnnotations = { ...current.metadata?.annotations };
+      delete newAnnotations[key];
+      return {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          annotations: newAnnotations
+        }
+      };
+    });
   };
 
   // Helper to get ReplicaSets and Pods
@@ -187,7 +166,6 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
       r.namespace === resource.namespace &&
       r.ownerRefs.includes(resource.id)
     ).sort((a, b) => {
-      // Sort by revision descending
       const revA = parseInt(a.raw?.metadata?.annotations?.['deployment.kubernetes.io/revision'] || '0');
       const revB = parseInt(b.raw?.metadata?.annotations?.['deployment.kubernetes.io/revision'] || '0');
       return revB - revA;
@@ -207,10 +185,10 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
   const rsList = getRelatedResources();
 
   // Status calculation
-  const readyReplicas = status.readyReplicas || 0;
-  const availableReplicas = status.availableReplicas || 0;
-  const unavailableReplicas = status.unavailableReplicas || 0;
-  const updatedReplicas = status.updatedReplicas || 0;
+  const readyReplicas = status?.readyReplicas || 0;
+  const availableReplicas = status?.availableReplicas || 0;
+  const unavailableReplicas = status?.unavailableReplicas || 0;
+  const updatedReplicas = status?.updatedReplicas || 0;
 
   const healthStatus = readyReplicas === currentReplicas
     ? 'healthy' 
@@ -218,8 +196,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
       ? 'warning' 
       : currentReplicas === 0 ? 'healthy' : 'error';
 
-  const strategy = spec.strategy || {};
-  const conditions = status.conditions || [];
+  const strategy = spec?.strategy || {};
+  const conditions = status?.conditions || [];
 
   return (
     <div className="space-y-6">
@@ -245,7 +223,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
             <div>
               <h2 className="text-xl font-bold text-white">{resource.name}</h2>
               <p className="text-sm text-slate-400 mt-1">
-                {metadata.namespace} • {healthStatus === 'healthy' ? 'All replicas ready' : 
+                {metadata?.namespace} • {healthStatus === 'healthy' ? 'All replicas ready' : 
                  healthStatus === 'warning' ? 'Some replicas not ready' : 
                  'No replicas available'}
               </p>
@@ -254,28 +232,18 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
 
           {/* Quick Scale */}
           <div className="flex items-center gap-3 bg-slate-900/50 rounded-lg p-2 border border-slate-700">
-            {replicas !== currentReplicas && (
-              <button
-                onClick={handleScale}
-                disabled={saving}
-                className="mr-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
-              >
-                {saving ? <RefreshCw className="animate-spin" size={12} /> : <Scale size={12} />}
-                Apply
-              </button>
-            )}
             <button 
-              onClick={() => setReplicas(Math.max(0, replicas - 1))}
+              onClick={() => handleReplicasChange((spec?.replicas ?? 1) - 1)}
               className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 transition-colors"
             >
               <Minus size={16} />
             </button>
             <div className="text-center min-w-[3rem]">
-              <div className="text-xl font-bold text-white">{replicas}</div>
+              <div className="text-xl font-bold text-white">{spec?.replicas ?? 1}</div>
               <div className="text-[10px] text-slate-500 uppercase">Replicas</div>
             </div>
             <button 
-              onClick={() => setReplicas(replicas + 1)}
+              onClick={() => handleReplicasChange((spec?.replicas ?? 1) + 1)}
               className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-300 transition-colors"
             >
               <Plus size={16} />
@@ -321,11 +289,11 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
             <span className="font-semibold text-slate-200">Metadata</span>
           </div>
           <div className="p-4 space-y-3 text-sm">
-            <MetaRow label="Namespace" value={metadata.namespace} />
-            <MetaRow label="Created" value={formatDate(metadata.creationTimestamp)} />
-            <MetaRow label="Generation" value={metadata.generation} />
-            <MetaRow label="Resource Version" value={metadata.resourceVersion} />
-            <MetaRow label="UID" value={metadata.uid} mono />
+            <MetaRow label="Namespace" value={metadata?.namespace} />
+            <MetaRow label="Created" value={formatDate(metadata?.creationTimestamp)} />
+            <MetaRow label="Generation" value={metadata?.generation} />
+            <MetaRow label="Resource Version" value={metadata?.resourceVersion} />
+            <MetaRow label="UID" value={metadata?.uid} mono />
           </div>
         </div>
 
@@ -350,8 +318,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                 <div className="space-y-2">
                   <label className="text-xs text-slate-500 uppercase font-bold">Type</label>
                   <select
-                    value={strategyType}
-                    onChange={(e) => setStrategyType(e.target.value)}
+                    value={localStrategyType}
+                    onChange={(e) => setLocalStrategyType(e.target.value)}
                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                   >
                     <option value="RollingUpdate">RollingUpdate</option>
@@ -359,14 +327,14 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                   </select>
                 </div>
 
-                {strategyType === 'RollingUpdate' && (
+                {localStrategyType === 'RollingUpdate' && (
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <label className="text-xs text-slate-500 uppercase font-bold">Max Unavailable</label>
                       <input
                         type="text"
-                        value={maxUnavailable}
-                        onChange={(e) => setMaxUnavailable(e.target.value)}
+                        value={localMaxUnavailable}
+                        onChange={(e) => setLocalMaxUnavailable(e.target.value)}
                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -374,8 +342,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                       <label className="text-xs text-slate-500 uppercase font-bold">Max Surge</label>
                       <input
                         type="text"
-                        value={maxSurge}
-                        onChange={(e) => setMaxSurge(e.target.value)}
+                        value={localMaxSurge}
+                        onChange={(e) => setLocalMaxSurge(e.target.value)}
                         className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                       />
                     </div>
@@ -384,12 +352,10 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
 
                 <div className="flex justify-end pt-2">
                   <button
-                    onClick={handleSaveStrategy}
-                    disabled={saving}
-                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2"
+                    onClick={handleApplyStrategy}
+                    className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors"
                   >
-                    {saving && <RefreshCw className="animate-spin" size={12} />}
-                    Save Changes
+                    Apply
                   </button>
                 </div>
               </div>
@@ -402,8 +368,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                 <MetaRow label="Max Surge" value={strategy.rollingUpdate.maxSurge} />
               </>
             )}
-            <MetaRow label="Min Ready Seconds" value={spec.minReadySeconds || 0} />
-            <MetaRow label="Progress Deadline" value={`${spec.progressDeadlineSeconds || 600}s`} />
+            <MetaRow label="Min Ready Seconds" value={spec?.minReadySeconds || 0} />
+            <MetaRow label="Progress Deadline" value={`${spec?.progressDeadlineSeconds || 600}s`} />
               </>
             )}
           </div>
@@ -417,7 +383,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
             <Copy size={16} className="text-slate-400" />
             <span className="font-semibold text-slate-200">ReplicaSets History</span>
             <span className="text-xs text-slate-500 ml-2">
-              (Limit: {spec.revisionHistoryLimit ?? 10})
+              (Limit: {spec?.revisionHistoryLimit ?? 10})
             </span>
           </div>
           <button
@@ -435,18 +401,16 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                 <label className="text-xs text-slate-500 uppercase font-bold">Revision History Limit</label>
                 <input
                   type="number"
-                  value={revisionHistoryLimit}
-                  onChange={(e) => setRevisionHistoryLimit(e.target.value)}
+                  value={localRevisionHistoryLimit}
+                  onChange={(e) => setLocalRevisionHistoryLimit(Number(e.target.value))}
                   className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500"
                 />
               </div>
               <button
-                onClick={handleSaveHistoryLimit}
-                disabled={saving}
-                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded transition-colors flex items-center gap-2 h-[34px]"
+                onClick={handleApplyHistoryLimit}
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded transition-colors h-[34px]"
               >
-                {saving && <RefreshCw className="animate-spin" size={12} />}
-                Save
+                Apply
               </button>
             </div>
           </div>
@@ -456,7 +420,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
           {rsList.length > 0 ? (
             rsList.map(({ rs, pods }) => {
               const revision = rs.raw?.metadata?.annotations?.['deployment.kubernetes.io/revision'];
-              const isCurrent = revision === metadata.annotations?.['deployment.kubernetes.io/revision'];
+              const isCurrent = revision === metadata?.annotations?.['deployment.kubernetes.io/revision'];
               const hasPods = pods.length > 0;
 
               return (
@@ -483,8 +447,8 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
                       {hasPods ? (
                         <div className="mt-2 flex flex-wrap gap-2">
                           {pods.map(pod => {
-                            const podPhase = pod.status as string; // 'Running', 'Pending', etc.
-                            const isReady = pod.raw?.status?.conditions?.find((c: any) => c.type === 'Ready' && c.status === 'True');
+                            const podPhase = pod.status as string;
+                            const isReady = pod.raw?.status?.conditions?.find((c: { type: string; status: string }) => c.type === 'Ready' && c.status === 'True');
                             const shortName = pod.name.replace(rs.name + '-', '');
                             
                             return (
@@ -553,7 +517,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
         </div>
         <div className="p-4">
           <div className="flex flex-wrap gap-2">
-            {Object.entries(metadata.labels || {}).map(([key, value]) => (
+            {Object.entries(metadata?.labels || {}).map(([key, value]) => (
               <span key={key} className="group flex items-center gap-1 bg-slate-800 text-slate-300 px-2 py-1 rounded-lg text-xs font-mono border border-slate-700">
                 <span className="text-blue-400">{key}</span>
                 <span className="text-slate-500">=</span>
@@ -587,7 +551,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
               />
               <button
                 onClick={handleAddLabel}
-                disabled={!newLabelKey.trim() || saving}
+                disabled={!newLabelKey.trim()}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-medium rounded transition-colors"
               >
                 Add
@@ -612,9 +576,9 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
           </button>
         </div>
         <div className="p-4">
-          {Object.entries(metadata.annotations || {}).length > 0 ? (
+          {Object.entries(metadata?.annotations || {}).length > 0 ? (
             <div className="space-y-2">
-              {Object.entries(metadata.annotations || {}).map(([key, value]) => (
+              {Object.entries(metadata?.annotations || {}).map(([key, value]) => (
                 <div key={key} className="group flex items-start gap-2 bg-slate-800/50 p-2 rounded border border-slate-700">
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-blue-400 font-mono truncate">{key}</div>
@@ -652,7 +616,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
               />
               <button
                 onClick={handleAddAnnotation}
-                disabled={!newAnnotationKey.trim() || saving}
+                disabled={!newAnnotationKey.trim()}
                 className="px-3 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-medium rounded transition-colors"
               >
                 Add
@@ -670,7 +634,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
             <span className="font-semibold text-slate-200">Conditions</span>
           </div>
           <div className="divide-y divide-slate-800">
-            {conditions.map((c: any, i: number) => (
+            {conditions.map((c, i: number) => (
               <div key={i} className="px-4 py-3 flex items-center gap-4">
                 <div className={clsx(
                   "w-2 h-2 rounded-full shrink-0",
@@ -701,7 +665,7 @@ export const DeploymentOverview: React.FC<Props> = ({ resource, onApply }) => {
 };
 
 // Helper Components
-const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: any; color: string }> = ({ icon, label, value }) => (
+const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: string | number; color: string }> = ({ icon, label, value }) => (
   <div className="bg-slate-900/50 rounded-xl border border-slate-800 p-4">
     <div className="flex items-center gap-3">
       <div className="p-2 rounded-lg bg-slate-800">{icon}</div>
@@ -713,18 +677,21 @@ const StatCard: React.FC<{ icon: React.ReactNode; label: string; value: any; col
   </div>
 );
 
-const MetaRow: React.FC<{ label: string; value: any; mono?: boolean }> = ({ label, value, mono }) => (
+const MetaRow: React.FC<{ label: string; value: string | number | undefined; mono?: boolean }> = ({ label, value, mono }) => (
   <div className="flex justify-between items-center">
     <span className="text-slate-500">{label}</span>
-    <span className={clsx("text-slate-200 truncate max-w-[60%]", mono && "font-mono text-xs")}>{value || '-'}</span>
+    <span className={clsx("text-slate-200 truncate max-w-[60%]", mono && "font-mono text-xs")}>{value ?? '-'}</span>
   </div>
 );
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string | Date | undefined): string {
   if (!dateStr) return '-';
   try {
+    if (dateStr instanceof Date) {
+      return dateStr.toLocaleString();
+    }
     return new Date(dateStr).toLocaleString();
   } catch {
-    return dateStr;
+    return String(dateStr);
   }
 }

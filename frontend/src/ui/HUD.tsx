@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef, useEffect } from 'react';
 import { useDisplayResources } from '../store/useClusterStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { Layers, Activity, Search, Filter, X, EyeOff, HelpCircle, GitBranch, Package } from 'lucide-react';
+import { Layers, Activity, Search, Filter, X, EyeOff, HelpCircle, GitBranch, Package, Plus } from 'lucide-react';
 import clsx from 'clsx';
 import { useThree, useFrame } from '@react-three/fiber';
 
@@ -28,6 +28,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 // Let's define a tiny store for stats first.
 import { create } from 'zustand';
 import { useOnboardingStore } from '../store/useOnboardingStore';
+import { useResourceCreationStore } from '../store/useResourceCreationStore';
 
 interface StatsState {
     fps: number;
@@ -113,6 +114,7 @@ export const HUD: React.FC<HUDProps> = ({ showFull = true }) => {
     hideSystemNamespaces,
     setHideSystemNamespaces
   } = useSettingsStore();
+  const openCreationHub = useResourceCreationStore(state => state.openHub);
 
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [nsSearch, setNsSearch] = useState(''); // Local state for namespace filter
@@ -369,6 +371,18 @@ export const HUD: React.FC<HUDProps> = ({ showFull = true }) => {
               </button>
           )}
         </div>
+
+        <div className="w-px h-6 bg-slate-700 mx-1" />
+
+        {/* Create Button */}
+        <button
+          onClick={() => openCreationHub('app')}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-sm font-medium"
+          title="Create Resources"
+        >
+          <Plus size={14} />
+          <span className="hidden sm:inline">Create</span>
+        </button>
       </div>
       ) : (
         <div /> 

@@ -4,7 +4,7 @@ import type { V1Ingress } from '../../../api/k8s-types';
 import { IngressOverview } from './tabs/IngressOverview';
 import { IngressRules } from './tabs/IngressRules';
 import { IngressTLS } from './tabs/IngressTLS';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface IngressViewProps {
   resource: ClusterResource;
@@ -20,19 +20,28 @@ export const ingressTabs = [
 
 export const IngressView: React.FC<IngressViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1Ingress>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1Ingress>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -50,10 +59,36 @@ export const IngressView: React.FC<IngressViewProps> = ({ resource, activeTab })
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <IngressOverview key={resourceKey} resource={fullResource} ingress={rawData!} onApply={applyChanges} />}
-      {activeTab === 'rules' && <IngressRules key={resourceKey} ingress={rawData!} onApply={applyChanges} />}
-      {activeTab === 'tls' && <IngressTLS key={resourceKey} ingress={rawData!} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <IngressOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'rules' && model && (
+        <IngressRules 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'tls' && model && (
+        <IngressTLS 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

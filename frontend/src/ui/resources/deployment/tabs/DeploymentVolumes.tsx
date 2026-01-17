@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import type { ClusterResource } from '../../../../api/types';
+import type { V1Deployment, V1Volume } from '../../../../api/k8s-types';
 import { 
   HardDrive, 
   Plus, 
@@ -13,16 +14,14 @@ import {
   Server,
   Layers,
   Cloud,
-  Save,
-  RefreshCw,
-  AlertCircle,
   Settings
 } from 'lucide-react';
 import { Combobox, useConfigMapNames, useSecretNames, usePVCNames } from '../../shared';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
+  model: V1Deployment;
+  updateModel: (updater: (current: V1Deployment) => V1Deployment) => void;
 }
 
 type VolumeType = 
@@ -35,19 +34,6 @@ type VolumeType =
   | 'downwardAPI'
   | 'nfs'
   | 'csi';
-
-interface VolumeSpec {
-  name: string;
-  emptyDir?: { medium?: string; sizeLimit?: string };
-  configMap?: { name: string; items?: Array<{ key: string; path: string; mode?: number }>; defaultMode?: number; optional?: boolean };
-  secret?: { secretName: string; items?: Array<{ key: string; path: string; mode?: number }>; defaultMode?: number; optional?: boolean };
-  persistentVolumeClaim?: { claimName: string; readOnly?: boolean };
-  hostPath?: { path: string; type?: string };
-  projected?: { sources: Array<any>; defaultMode?: number };
-  downwardAPI?: { items: Array<{ path: string; fieldRef?: { fieldPath: string }; resourceFieldRef?: { resource: string; containerName?: string } }> };
-  nfs?: { server: string; path: string; readOnly?: boolean };
-  csi?: { driver: string; readOnly?: boolean; fsType?: string; volumeAttributes?: Record<string, string> };
-}
 
 const volumeTypeIcons: Record<VolumeType, React.ReactNode> = {
   emptyDir: <Folder className="text-slate-400" size={16} />,
@@ -73,28 +59,33 @@ const volumeTypeLabels: Record<VolumeType, string> = {
   csi: 'CSI',
 };
 
-export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
-  const raw = resource.raw;
+export const DeploymentVolumes: React.FC<Props> = ({ resource, model, updateModel }) => {
   const namespace = resource.namespace;
-  const template = raw?.spec?.template?.spec || {};
-  const [volumes, setVolumes] = useState<VolumeSpec[]>(template.volumes || []);
+  const template = model?.spec?.template?.spec;
+  const volumes = (template?.volumes || []) as V1Volume[];
+  
   const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const updated = JSON.parse(JSON.stringify(raw));
-      updated.spec.template.spec.volumes = volumes.length > 0 ? volumes : undefined;
-      await onApply(updated);
-      setHasChanges(false);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setSaving(false);
-    }
+  const updateVolumes = (newVolumes: V1Volume[]) => {
+    updateModel(current => {
+      const currentSpec = current.spec?.template?.spec;
+      return {
+        ...current,
+        spec: {
+          ...current.spec,
+          selector: current.spec?.selector || { matchLabels: {} },
+          template: {
+            ...current.spec?.template,
+            spec: {
+              ...currentSpec,
+              containers: currentSpec?.containers || [],
+              volumes: newVolumes.length > 0 ? newVolumes : undefined
+            }
+          }
+        }
+      };
+    });
   };
 
   const toggleExpanded = (name: string) => {
@@ -106,7 +97,7 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
 
   const addVolume = (type: VolumeType) => {
     const baseName = `volume-${Date.now()}`;
-    let newVolume: VolumeSpec = { name: baseName };
+    let newVolume: V1Volume = { name: baseName };
 
     switch (type) {
       case 'emptyDir':
@@ -138,25 +129,22 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
         break;
     }
 
-    setVolumes([...volumes, newVolume]);
+    updateVolumes([...volumes, newVolume]);
     setExpandedVolumes(new Set([...expandedVolumes, baseName]));
-    setHasChanges(true);
     setShowAddModal(false);
   };
 
-  const updateVolume = (index: number, updates: Partial<VolumeSpec>) => {
+  const updateVolume = (index: number, updates: Partial<V1Volume>) => {
     const newVolumes = [...volumes];
     newVolumes[index] = { ...newVolumes[index], ...updates };
-    setVolumes(newVolumes);
-    setHasChanges(true);
+    updateVolumes(newVolumes);
   };
 
   const removeVolume = (index: number) => {
-    setVolumes(volumes.filter((_, i) => i !== index));
-    setHasChanges(true);
+    updateVolumes(volumes.filter((_, i) => i !== index));
   };
 
-  const getVolumeType = (volume: VolumeSpec): VolumeType => {
+  const getVolumeType = (volume: V1Volume): VolumeType => {
     if (volume.emptyDir !== undefined) return 'emptyDir';
     if (volume.configMap) return 'configMap';
     if (volume.secret) return 'secret';
@@ -171,35 +159,17 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
 
   // Find containers that mount each volume
   const containerMounts = (volumeName: string) => {
-    const containers = [...(template.containers || []), ...(template.initContainers || [])];
+    const containers = [...(template?.containers || []), ...(template?.initContainers || [])];
     return containers
-      .filter((c: any) => c.volumeMounts?.some((m: any) => m.name === volumeName))
-      .map((c: any) => ({
+      .filter((c) => c.volumeMounts?.some((m: { name?: string }) => m.name === volumeName))
+      .map((c) => ({
         name: c.name,
-        mount: c.volumeMounts.find((m: any) => m.name === volumeName)
+        mount: c.volumeMounts?.find((m: { name?: string }) => m.name === volumeName)
       }));
   };
 
   return (
     <div className="space-y-6">
-      {/* Save Banner */}
-      {hasChanges && (
-        <div className="sticky top-0 z-10 bg-amber-900/80 backdrop-blur-sm border border-amber-700 rounded-lg p-3 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-amber-200">
-            <AlertCircle size={16} />
-            <span className="text-sm font-medium">You have unsaved changes</span>
-          </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-sm font-bold rounded transition-colors"
-          >
-            {saving ? <RefreshCw className="animate-spin" size={14} /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-      )}
-
       {/* Volumes Section */}
       <div className="bg-slate-900/50 rounded-xl border border-slate-800">
         <div className="px-4 py-3 bg-slate-800/50 border-b border-slate-700 rounded-t-xl flex items-center justify-between">
@@ -233,15 +203,15 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
           <div className="divide-y divide-slate-800">
             {volumes.map((volume, idx) => {
               const type = getVolumeType(volume);
-              const mounts = containerMounts(volume.name);
-              const isExpanded = expandedVolumes.has(volume.name);
+              const mounts = containerMounts(volume.name || '');
+              const isExpanded = expandedVolumes.has(volume.name || '');
 
               return (
                 <div key={volume.name} className="bg-slate-900/30">
                   {/* Volume Header */}
                   <div 
                     className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-slate-800/30 transition-colors"
-                    onClick={() => toggleExpanded(volume.name)}
+                    onClick={() => toggleExpanded(volume.name || '')}
                   >
                     {isExpanded ? <ChevronDown size={16} className="text-slate-500" /> : <ChevronRight size={16} className="text-slate-500" />}
                     {volumeTypeIcons[type]}
@@ -250,7 +220,7 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
                       <span className="ml-3 text-xs px-2 py-0.5 bg-slate-800 text-slate-400 rounded">{volumeTypeLabels[type]}</span>
                       {mounts.length > 0 && (
                         <span className="ml-2 text-xs text-slate-500">
-                          → {mounts.map(m => m.mount.mountPath).join(', ')}
+                          → {mounts.map(m => m.mount?.mountPath).join(', ')}
                         </span>
                       )}
                     </div>
@@ -364,10 +334,10 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, onApply }) => {
 
 // Volume Editor based on type
 interface VolumeEditorProps {
-  volume: VolumeSpec;
+  volume: V1Volume;
   type: VolumeType;
-  onUpdate: (updates: Partial<VolumeSpec>) => void;
-  mounts: Array<{ name: string; mount: any }>;
+  onUpdate: (updates: Partial<V1Volume>) => void;
+  mounts: Array<{ name?: string; mount: { mountPath?: string; readOnly?: boolean } | undefined }>;
   namespace: string;
 }
 
@@ -379,7 +349,7 @@ const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mou
         <label className="text-xs text-slate-400 mb-1 block">Volume Name</label>
         <input
           type="text"
-          value={volume.name}
+          value={volume.name || ''}
           onChange={(e) => onUpdate({ name: e.target.value })}
           className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
         />
@@ -391,8 +361,6 @@ const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mou
       {type === 'secret' && <SecretVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
       {type === 'persistentVolumeClaim' && <PVCVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
       {type === 'hostPath' && <HostPathVolumeEditor volume={volume} onUpdate={onUpdate} />}
-      {type === 'projected' && <ProjectedVolumeEditor volume={volume} onUpdate={onUpdate} namespace={namespace} />}
-      {type === 'downwardAPI' && <DownwardAPIVolumeEditor volume={volume} onUpdate={onUpdate} />}
       {type === 'nfs' && <NFSVolumeEditor volume={volume} onUpdate={onUpdate} />}
       {type === 'csi' && <CSIVolumeEditor volume={volume} onUpdate={onUpdate} />}
 
@@ -405,8 +373,8 @@ const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mou
               <div key={i} className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400">{m.name}</span>
                 <span className="text-slate-600">→</span>
-                <span className="text-slate-300 font-mono">{m.mount.mountPath}</span>
-                {m.mount.readOnly && <span className="text-amber-500">(RO)</span>}
+                <span className="text-slate-300 font-mono">{m.mount?.mountPath}</span>
+                {m.mount?.readOnly && <span className="text-amber-500">(RO)</span>}
               </div>
             ))}
           </div>
@@ -417,7 +385,7 @@ const VolumeEditor: React.FC<VolumeEditorProps> = ({ volume, type, onUpdate, mou
 };
 
 // Empty Dir Editor
-const EmptyDirEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
+const EmptyDirEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void }> = ({ volume, onUpdate }) => (
   <div className="grid grid-cols-2 gap-4">
     <div>
       <label className="text-xs text-slate-400 mb-1 block">Medium</label>
@@ -444,7 +412,7 @@ const EmptyDirEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<Volum
 );
 
 // ConfigMap Volume Editor
-const ConfigMapVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+const ConfigMapVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
   const configMapNames = useConfigMapNames(namespace);
   
   return (
@@ -484,16 +452,12 @@ const ConfigMapVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partia
         />
         <span className="text-sm text-slate-300">Optional (don't fail if ConfigMap doesn't exist)</span>
       </label>
-      <ItemsEditor
-        items={volume.configMap?.items}
-        onUpdate={(items) => onUpdate({ configMap: { ...volume.configMap!, items: items.length > 0 ? items : undefined } })}
-      />
     </div>
   );
 };
 
 // Secret Volume Editor
-const SecretVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+const SecretVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
   const secretNames = useSecretNames(namespace);
   
   return (
@@ -533,16 +497,12 @@ const SecretVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<V
         />
         <span className="text-sm text-slate-300">Optional (don't fail if Secret doesn't exist)</span>
       </label>
-      <ItemsEditor
-        items={volume.secret?.items}
-        onUpdate={(items) => onUpdate({ secret: { ...volume.secret!, items: items.length > 0 ? items : undefined } })}
-      />
     </div>
   );
 };
 
 // PVC Volume Editor
-const PVCVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
+const PVCVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
   const pvcNames = usePVCNames(namespace);
   
   return (
@@ -572,7 +532,7 @@ const PVCVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<Volu
 };
 
 // Host Path Volume Editor
-const HostPathVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
+const HostPathVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void }> = ({ volume, onUpdate }) => (
   <div className="space-y-4">
     <div>
       <label className="text-xs text-slate-400 mb-1 block">Path *</label>
@@ -607,210 +567,8 @@ const HostPathVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial
   </div>
 );
 
-// Projected Volume Editor
-const ProjectedVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void; namespace: string }> = ({ volume, onUpdate, namespace }) => {
-  const sources = volume.projected?.sources || [];
-  const configMapNames = useConfigMapNames(namespace);
-  const secretNames = useSecretNames(namespace);
-
-  const addSource = (type: 'configMap' | 'secret' | 'serviceAccountToken' | 'downwardAPI') => {
-    const newSource: any = {};
-    if (type === 'configMap') newSource.configMap = { name: '' };
-    else if (type === 'secret') newSource.secret = { name: '' };
-    else if (type === 'serviceAccountToken') newSource.serviceAccountToken = { path: 'token', expirationSeconds: 3600 };
-    else if (type === 'downwardAPI') newSource.downwardAPI = { items: [] };
-    
-    onUpdate({ projected: { ...volume.projected!, sources: [...sources, newSource] } });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-xs text-slate-400 mb-1 block">Default Mode</label>
-        <input
-          type="text"
-          value={volume.projected?.defaultMode !== undefined ? volume.projected.defaultMode.toString(8) : ''}
-          onChange={(e) => {
-            const mode = parseInt(e.target.value, 8);
-            onUpdate({ projected: { ...volume.projected!, defaultMode: isNaN(mode) ? undefined : mode } });
-          }}
-          placeholder="0644"
-          className="w-48 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-blue-500"
-        />
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-2">
-          <label className="text-xs font-bold text-slate-500 uppercase">Sources</label>
-          <div className="flex gap-2">
-            <button onClick={() => addSource('configMap')} className="text-xs text-blue-400 hover:text-blue-300">+ ConfigMap</button>
-            <button onClick={() => addSource('secret')} className="text-xs text-amber-400 hover:text-amber-300">+ Secret</button>
-            <button onClick={() => addSource('serviceAccountToken')} className="text-xs text-emerald-400 hover:text-emerald-300">+ Token</button>
-          </div>
-        </div>
-
-        {sources.length === 0 ? (
-          <div className="text-xs text-slate-500 py-2">No sources added</div>
-        ) : (
-          <div className="space-y-2">
-            {sources.map((source: any, i: number) => (
-              <div key={i} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded border border-slate-700">
-                <span className="text-xs text-slate-400 w-24">
-                  {source.configMap ? 'ConfigMap' : source.secret ? 'Secret' : source.serviceAccountToken ? 'SA Token' : 'DownwardAPI'}
-                </span>
-                {source.configMap ? (
-                  <div className="flex-1">
-                    <Combobox
-                      value={source.configMap.name || ''}
-                      onChange={(v) => {
-                        const newSources = [...sources];
-                        newSources[i] = { configMap: { ...source.configMap, name: v } };
-                        onUpdate({ projected: { ...volume.projected!, sources: newSources } });
-                      }}
-                      options={configMapNames}
-                      placeholder="Select ConfigMap..."
-                      allowCustom={true}
-                      size="sm"
-                    />
-                  </div>
-                ) : source.secret ? (
-                  <div className="flex-1">
-                    <Combobox
-                      value={source.secret.name || ''}
-                      onChange={(v) => {
-                        const newSources = [...sources];
-                        newSources[i] = { secret: { ...source.secret, name: v } };
-                        onUpdate({ projected: { ...volume.projected!, sources: newSources } });
-                      }}
-                      options={secretNames}
-                      placeholder="Select Secret..."
-                      allowCustom={true}
-                      size="sm"
-                    />
-                  </div>
-                ) : (
-                  <input
-                    type="text"
-                    value={source.serviceAccountToken?.path || ''}
-                    onChange={(e) => {
-                      const newSources = [...sources];
-                      if (source.serviceAccountToken) newSources[i] = { serviceAccountToken: { ...source.serviceAccountToken, path: e.target.value } };
-                      onUpdate({ projected: { ...volume.projected!, sources: newSources } });
-                    }}
-                    placeholder="Path"
-                    className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-                  />
-                )}
-                <button
-                  onClick={() => {
-                    onUpdate({ projected: { ...volume.projected!, sources: sources.filter((_: any, idx: number) => idx !== i) } });
-                  }}
-                  className="text-red-400 hover:text-red-300"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-// Downward API Volume Editor
-const DownwardAPIVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => {
-  const items = volume.downwardAPI?.items || [];
-
-  const addItem = () => {
-    onUpdate({
-      downwardAPI: {
-        ...volume.downwardAPI!,
-        items: [...items, { path: '', fieldRef: { fieldPath: 'metadata.name' } }]
-      }
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <label className="text-xs font-bold text-slate-500 uppercase">Items</label>
-        <button onClick={addItem} className="text-xs text-blue-400 hover:text-blue-300">
-          <Plus size={12} className="inline mr-1" /> Add Item
-        </button>
-      </div>
-
-      {items.length === 0 ? (
-        <div className="text-xs text-slate-500 py-2">No items defined</div>
-      ) : (
-        <div className="space-y-2">
-          {items.map((item: any, i: number) => (
-            <div key={i} className="flex gap-2 items-center bg-slate-800/50 p-2 rounded border border-slate-700">
-              <select
-                value={item.fieldRef?.fieldPath || item.resourceFieldRef?.resource || ''}
-                onChange={(e) => {
-                  const newItems = [...items];
-                  const val = e.target.value;
-                  if (val.startsWith('limits.') || val.startsWith('requests.')) {
-                    newItems[i] = { ...item, fieldRef: undefined, resourceFieldRef: { resource: val } };
-                  } else {
-                    newItems[i] = { ...item, resourceFieldRef: undefined, fieldRef: { fieldPath: val } };
-                  }
-                  onUpdate({ downwardAPI: { ...volume.downwardAPI!, items: newItems } });
-                }}
-                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-              >
-                <optgroup label="Metadata">
-                  <option value="metadata.name">Pod Name</option>
-                  <option value="metadata.namespace">Namespace</option>
-                  <option value="metadata.uid">UID</option>
-                  <option value="metadata.labels">Labels</option>
-                  <option value="metadata.annotations">Annotations</option>
-                </optgroup>
-                <optgroup label="Spec">
-                  <option value="spec.nodeName">Node Name</option>
-                  <option value="spec.serviceAccountName">Service Account</option>
-                </optgroup>
-                <optgroup label="Status">
-                  <option value="status.podIP">Pod IP</option>
-                  <option value="status.hostIP">Host IP</option>
-                </optgroup>
-                <optgroup label="Resources">
-                  <option value="limits.cpu">CPU Limits</option>
-                  <option value="limits.memory">Memory Limits</option>
-                  <option value="requests.cpu">CPU Requests</option>
-                  <option value="requests.memory">Memory Requests</option>
-                </optgroup>
-              </select>
-              <input
-                type="text"
-                value={item.path}
-                onChange={(e) => {
-                  const newItems = [...items];
-                  newItems[i] = { ...item, path: e.target.value };
-                  onUpdate({ downwardAPI: { ...volume.downwardAPI!, items: newItems } });
-                }}
-                placeholder="Path (e.g., labels)"
-                className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
-              />
-              <button
-                onClick={() => {
-                  onUpdate({ downwardAPI: { ...volume.downwardAPI!, items: items.filter((_: any, idx: number) => idx !== i) } });
-                }}
-                className="text-red-400 hover:text-red-300"
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
 // NFS Volume Editor
-const NFSVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
+const NFSVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void }> = ({ volume, onUpdate }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 gap-4">
       <div>
@@ -847,7 +605,7 @@ const NFSVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<Volu
 );
 
 // CSI Volume Editor
-const CSIVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<VolumeSpec>) => void }> = ({ volume, onUpdate }) => (
+const CSIVolumeEditor: React.FC<{ volume: V1Volume; onUpdate: (u: Partial<V1Volume>) => void }> = ({ volume, onUpdate }) => (
   <div className="space-y-4">
     <div className="grid grid-cols-2 gap-4">
       <div>
@@ -880,61 +638,5 @@ const CSIVolumeEditor: React.FC<{ volume: VolumeSpec; onUpdate: (u: Partial<Volu
       />
       <span className="text-sm text-slate-300">Read Only</span>
     </label>
-  </div>
-);
-
-// Items Editor (for ConfigMap/Secret)
-const ItemsEditor: React.FC<{
-  items?: Array<{ key: string; path: string; mode?: number }>;
-  onUpdate: (items: Array<{ key: string; path: string; mode?: number }>) => void;
-}> = ({ items = [], onUpdate }) => (
-  <div>
-    <div className="flex items-center justify-between mb-2">
-      <label className="text-xs font-bold text-slate-500 uppercase">Specific Keys (optional)</label>
-      <button
-        onClick={() => onUpdate([...items, { key: '', path: '' }])}
-        className="text-xs text-blue-400 hover:text-blue-300"
-      >
-        <Plus size={12} className="inline mr-1" /> Add Key
-      </button>
-    </div>
-    {items.length === 0 ? (
-      <div className="text-xs text-slate-500 py-1">All keys will be mounted</div>
-    ) : (
-      <div className="space-y-2">
-        {items.map((item, i) => (
-          <div key={i} className="flex gap-2 items-center">
-            <input
-              type="text"
-              value={item.key}
-              onChange={(e) => {
-                const newItems = [...items];
-                newItems[i] = { ...item, key: e.target.value };
-                onUpdate(newItems);
-              }}
-              placeholder="Key"
-              className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white"
-            />
-            <input
-              type="text"
-              value={item.path}
-              onChange={(e) => {
-                const newItems = [...items];
-                newItems[i] = { ...item, path: e.target.value };
-                onUpdate(newItems);
-              }}
-              placeholder="Path"
-              className="flex-1 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-white font-mono"
-            />
-            <button
-              onClick={() => onUpdate(items.filter((_, idx) => idx !== i))}
-              className="text-red-400 hover:text-red-300"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-        ))}
-      </div>
-    )}
   </div>
 );

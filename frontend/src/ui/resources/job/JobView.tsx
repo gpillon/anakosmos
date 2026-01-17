@@ -3,7 +3,7 @@ import type { ClusterResource } from '../../../api/types';
 import type { V1Job } from '../../../api/k8s-types';
 import { JobOverview } from './tabs/JobOverview';
 import { JobPodTemplate } from './tabs/JobPodTemplate';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface JobViewProps {
   resource: ClusterResource;
@@ -18,19 +18,28 @@ export const jobTabs = [
 
 export const JobView: React.FC<JobViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1Job>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1Job>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -48,9 +57,29 @@ export const JobView: React.FC<JobViewProps> = ({ resource, activeTab }) => {
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <JobOverview key={resourceKey} resource={fullResource} job={rawData!} onApply={applyChanges} />}
-      {activeTab === 'template' && <JobPodTemplate key={resourceKey} job={rawData!} />}
+      {activeTab === 'overview' && model && (
+        <JobOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'template' && model && (
+        <JobPodTemplate 
+          model={model}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

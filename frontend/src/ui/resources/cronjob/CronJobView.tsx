@@ -3,7 +3,7 @@ import type { ClusterResource } from '../../../api/types';
 import type { V1CronJob } from '../../../api/k8s-types';
 import { CronJobOverview } from './tabs/CronJobOverview';
 import { CronJobJobTemplate } from './tabs/CronJobJobTemplate';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface CronJobViewProps {
   resource: ClusterResource;
@@ -18,19 +18,28 @@ export const cronJobTabs = [
 
 export const CronJobView: React.FC<CronJobViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1CronJob>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1CronJob>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -48,9 +57,29 @@ export const CronJobView: React.FC<CronJobViewProps> = ({ resource, activeTab })
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <CronJobOverview key={resourceKey} resource={fullResource} cronJob={rawData!} onApply={applyChanges} />}
-      {activeTab === 'template' && <CronJobJobTemplate key={resourceKey} cronJob={rawData!} />}
+      {activeTab === 'overview' && model && (
+        <CronJobOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'template' && model && (
+        <CronJobJobTemplate 
+          model={model}
+        />
+      )}
     </ResourceViewLayout>
   );
 };

@@ -125,10 +125,10 @@ export const Combobox: React.FC<ComboboxProps> = ({
         />
       </button>
 
-      {/* Dropdown */}
+      {/* Dropdown - z-[300] to appear above modals */}
       {isOpen && (
         <div className={clsx(
-          "absolute z-50 top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden",
+          "absolute z-[300] top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden",
           dropdownSizeClasses[size]
         )}>
           {/* Search / Custom Input */}
@@ -301,7 +301,7 @@ export const MultiCombobox: React.FC<MultiComboboxProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+        <div className="absolute z-[300] top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
           <div className="p-2 border-b border-slate-700">
             <div className="relative">
               <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500" />

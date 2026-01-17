@@ -3,7 +3,7 @@ import type { ClusterResource } from '../../../api/types';
 import type { V1ConfigMap } from '../../../api/k8s-types';
 import { ConfigMapOverview } from './tabs/ConfigMapOverview';
 import { ConfigMapData } from './tabs/ConfigMapData';
-import { useResourceView, ResourceViewLayout } from '../shared';
+import { useResourceModel, ResourceViewLayout } from '../shared';
 
 interface ConfigMapViewProps {
   resource: ClusterResource;
@@ -18,19 +18,28 @@ export const configMapTabs = [
 
 export const ConfigMapView: React.FC<ConfigMapViewProps> = ({ resource, activeTab }) => {
   const {
-    rawData,
+    model,
+    updateModel,
     fullResource,
-    resourceKey,
     isLoading,
+    hasChanges,
+    saveModel,
+    discardChanges,
+    isSaving,
     yamlContent,
     isYamlLoading,
     eventsRef,
     handleDelete,
-    applyChanges,
     handleSaveYaml,
     setYamlContent,
     scrollToEvents,
-  } = useResourceView<V1ConfigMap>({ resource, activeTab });
+    hasServerUpdate,
+    serverResourceVersion,
+    reloadFromServer,
+    dismissServerUpdate,
+    saveError,
+    clearSaveError,
+  } = useResourceModel<V1ConfigMap>({ resource, activeTab });
 
   return (
     <ResourceViewLayout
@@ -48,9 +57,30 @@ export const ConfigMapView: React.FC<ConfigMapViewProps> = ({ resource, activeTa
       onDelete={handleDelete}
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
+      hasChanges={hasChanges}
+      isSaving={isSaving}
+      onSave={saveModel}
+      onDiscard={discardChanges}
+      hasServerUpdate={hasServerUpdate}
+      serverResourceVersion={serverResourceVersion}
+      onReloadFromServer={reloadFromServer}
+      onDismissServerUpdate={dismissServerUpdate}
+      saveError={saveError}
+      onClearError={clearSaveError}
     >
-      {activeTab === 'overview' && <ConfigMapOverview key={resourceKey} resource={fullResource} configMap={rawData!} onApply={applyChanges} />}
-      {activeTab === 'data' && <ConfigMapData key={resourceKey} configMap={rawData!} onApply={applyChanges} />}
+      {activeTab === 'overview' && model && (
+        <ConfigMapOverview 
+          resource={fullResource} 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
+      {activeTab === 'data' && model && (
+        <ConfigMapData 
+          model={model}
+          updateModel={updateModel}
+        />
+      )}
     </ResourceViewLayout>
   );
 };
