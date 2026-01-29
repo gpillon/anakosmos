@@ -99,12 +99,22 @@ export type {
 export type {
   V1PersistentVolumeClaim,
   V1PersistentVolumeClaimSpec,
+  V1PersistentVolumeClaimStatus,
+  V1PersistentVolumeClaimCondition,
   V1PersistentVolume,
+  V1PersistentVolumeSpec,
+  V1PersistentVolumeStatus,
   V1EmptyDirVolumeSource,
   V1ConfigMapVolumeSource,
   V1SecretVolumeSource,
   V1HostPathVolumeSource,
   V1PersistentVolumeClaimVolumeSource,
+} from '@kubernetes/client-node';
+
+// Storage
+export type {
+  V1StorageClass,
+  V1VolumeNodeAffinity,
 } from '@kubernetes/client-node';
 
 // Node types

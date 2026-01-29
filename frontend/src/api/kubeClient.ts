@@ -1021,15 +1021,17 @@ export class KubeClient {
 
   /**
    * Get Helm release values via backend
+   * @param all - if true, returns computed values (defaults + user overrides merged); if false, returns only user-supplied overrides
    */
-  async getHelmReleaseValues(namespace: string, releaseName: string): Promise<Record<string, unknown> | null> {
+  async getHelmReleaseValues(namespace: string, releaseName: string, all: boolean = true): Promise<Record<string, unknown> | null> {
     try {
       // Helm API calls always go to our backend, not the K8s proxy
       // For remote clusters, pass target and token as query params
       const cleanBase = this.baseUrl.replace(/\/+$/, '');
       const params = new URLSearchParams({
         namespace,
-        name: releaseName
+        name: releaseName,
+        all: all ? 'true' : 'false'
       });
       
       if (this.mode === 'custom') {
@@ -1122,9 +1124,14 @@ export class KubeClient {
   }
 
   /**
-   * Upgrade Helm release with new values
+   * Upgrade Helm release with new values (and optional chart selection)
    */
-  async updateHelmRelease(namespace: string, releaseName: string, values: Record<string, unknown>): Promise<boolean> {
+  async updateHelmRelease(
+    namespace: string,
+    releaseName: string,
+    values: Record<string, unknown>,
+    options?: { repoUrl?: string; chart?: string; version?: string }
+  ): Promise<boolean> {
     try {
       const cleanBase = this.baseUrl.replace(/\/+$/, '');
       const params = new URLSearchParams({
@@ -1140,10 +1147,13 @@ export class KubeClient {
       }
       
       const url = `/api/helm/upgrade?${params.toString()}`;
+      const payload = options && (options.repoUrl || options.chart || options.version)
+        ? { values, ...options }
+        : values;
       const res = await fetch(url, { 
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(values)
+          body: JSON.stringify(payload)
       });
       
       return res.ok;

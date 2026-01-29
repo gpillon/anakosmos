@@ -9,7 +9,6 @@ import {
   Calendar,
   Tag,
   Hash,
-  ArrowUpCircle,
   ArrowDownCircle,
   Clock,
   Server
@@ -59,13 +58,6 @@ export const HelmReleaseOverview: React.FC<Props> = ({ resource }) => {
   };
 
   const healthStatus = getHealthStatus();
-
-  // Actions using real backend API
-  const handleUpgrade = async () => {
-    // For upgrade with new values, user should go to the Values tab
-    // This button is more informational
-    alert(`To upgrade this release with new values, use the "Values" tab.\n\nAlternatively, use helm CLI:\nhelm upgrade ${resource.name} <chart> -n ${resource.namespace}`);
-  };
 
   const handleRollback = async () => {
     if (!useClusterStore.getState().client) return;
@@ -135,13 +127,6 @@ export const HelmReleaseOverview: React.FC<Props> = ({ resource }) => {
             >
               <ArrowDownCircle size={16} className={rolling ? 'animate-spin' : ''} />
               Rollback
-            </button>
-            <button
-              onClick={handleUpgrade}
-              className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg transition-colors"
-            >
-              <ArrowUpCircle size={16} />
-              Upgrade
             </button>
           </div>
         </div>

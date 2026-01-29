@@ -13,6 +13,8 @@ import { CronJobView, cronJobTabs } from './resources/cronjob/CronJobView';
 import { HPAView, hpaTabs } from './resources/hpa/HPAView';
 import { ApplicationView, applicationTabs } from './resources/application/ApplicationView';
 import { HelmReleaseView, helmReleaseTabs } from './resources/helmrelease/HelmReleaseView';
+import { PVCView, pvcTabs } from './resources/persistentvolumeclaim/PVCView';
+import { StorageClassView, storageClassTabs } from './resources/storageclass/StorageClassView';
 import { GenericView, genericTabs } from './resources/generic/GenericView';
 import type { ClusterResource } from '../api/types';
 import { useClusterStore } from '../store/useClusterStore';
@@ -30,6 +32,8 @@ const viewMap: Record<string, { view: React.FC<{ resource: ClusterResource; acti
   'HorizontalPodAutoscaler': { view: HPAView, tabs: hpaTabs },
   'Application': { view: ApplicationView, tabs: applicationTabs },
   'HelmRelease': { view: HelmReleaseView, tabs: helmReleaseTabs },
+  'PersistentVolumeClaim': { view: PVCView, tabs: pvcTabs },
+  'StorageClass': { view: StorageClassView, tabs: storageClassTabs },
 };
 
 export const ResourceDetailsWindow: React.FC = () => {

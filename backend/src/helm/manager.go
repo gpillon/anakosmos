@@ -139,6 +139,51 @@ func (m *HelmManager) Upgrade(namespace, name string, values map[string]interfac
 	return client.Run(name, chart, values)
 }
 
+// UpgradeFromRepo upgrades a release using a chart fetched from a repo URL.
+func (m *HelmManager) UpgradeFromRepo(namespace, name, repoURL, chartName, version string, values map[string]interface{}) (*release.Release, error) {
+	cfg, err := m.getActionConfig(namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	client := action.NewUpgrade(cfg)
+	client.Namespace = namespace
+	client.ReuseValues = false
+	client.ChartPathOptions.Version = version
+
+	registryClient, err := registry.NewClient()
+	if err != nil {
+		return nil, err
+	}
+	client.SetRegistryClient(registryClient)
+
+	chartRef := chartName
+	if strings.HasPrefix(repoURL, "oci://") {
+		chartRef = strings.TrimRight(repoURL, "/")
+		if chartName != "" {
+			chartRef = chartRef + "/" + chartName
+		}
+	} else {
+		client.ChartPathOptions.RepoURL = repoURL
+	}
+
+	chartPath, err := client.ChartPathOptions.LocateChart(chartRef, m.settings)
+	if err != nil {
+		return nil, err
+	}
+
+	chart, err := loader.Load(chartPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if values == nil {
+		values = map[string]interface{}{}
+	}
+
+	return client.Run(name, chart, values)
+}
+
 // InstallFromRepo installs a chart from a repository URL.
 func (m *HelmManager) InstallFromRepo(namespace, releaseName, repoURL, chartName, version string, values map[string]interface{}) (*release.Release, error) {
 	cfg, err := m.getActionConfig(namespace)

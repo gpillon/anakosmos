@@ -135,3 +135,259 @@ export const KINDS_BY_CATEGORY: Record<ResourceCategory, KindConfig[]> = KIND_CO
 // Default color for unknown kinds
 export const DEFAULT_COLOR = '#9ca3af';
 export const DEFAULT_GEOMETRY: GeometryType = 'tetra';
+
+/**
+ * Configuration for resource kinds that can be created through the Application builder.
+ * This is the single source of truth - no hardcoding in UI components!
+ */
+export interface CreatableKindConfig extends KindConfig {
+  /** API version for creating resources */
+  apiVersion: string;
+  /** Whether the resource is namespace-scoped */
+  namespaced: boolean;
+  /** Short description for the resource */
+  description: string;
+  /** Default template for creating a new instance */
+  defaultTemplate: () => Record<string, unknown>;
+}
+
+/**
+ * Resource kinds that can be created through the Application builder.
+ * When you add a new View component in /ui/resources, add it here too!
+ */
+export const CREATABLE_KINDS: CreatableKindConfig[] = [
+  // Workloads
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'Deployment')!,
+    apiVersion: 'apps/v1',
+    namespaced: true,
+    description: 'Manages replicated application pods',
+    defaultTemplate: () => ({
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: { name: 'my-deployment', labels: { app: 'my-app' } },
+      spec: {
+        replicas: 2,
+        selector: { matchLabels: { app: 'my-app' } },
+        template: {
+          metadata: { labels: { app: 'my-app' } },
+          spec: {
+            containers: [{
+              name: 'main',
+              image: 'nginx:latest',
+              ports: [{ containerPort: 80 }],
+            }],
+          },
+        },
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'Job')!,
+    apiVersion: 'batch/v1',
+    namespaced: true,
+    description: 'Runs a task to completion',
+    defaultTemplate: () => ({
+      apiVersion: 'batch/v1',
+      kind: 'Job',
+      metadata: { name: 'my-job' },
+      spec: {
+        completions: 1,
+        backoffLimit: 4,
+        template: {
+          spec: {
+            restartPolicy: 'OnFailure',
+            containers: [{
+              name: 'job',
+              image: 'busybox:latest',
+              command: ['echo', 'Hello from Job'],
+            }],
+          },
+        },
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'CronJob')!,
+    apiVersion: 'batch/v1',
+    namespaced: true,
+    description: 'Runs jobs on a schedule',
+    defaultTemplate: () => ({
+      apiVersion: 'batch/v1',
+      kind: 'CronJob',
+      metadata: { name: 'my-cronjob' },
+      spec: {
+        schedule: '*/5 * * * *',
+        jobTemplate: {
+          spec: {
+            template: {
+              spec: {
+                restartPolicy: 'OnFailure',
+                containers: [{
+                  name: 'job',
+                  image: 'busybox:latest',
+                  command: ['echo', 'Hello from CronJob'],
+                }],
+              },
+            },
+          },
+        },
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'HorizontalPodAutoscaler')!,
+    apiVersion: 'autoscaling/v2',
+    namespaced: true,
+    description: 'Autoscales workloads based on metrics',
+    defaultTemplate: () => ({
+      apiVersion: 'autoscaling/v2',
+      kind: 'HorizontalPodAutoscaler',
+      metadata: { name: 'my-hpa' },
+      spec: {
+        scaleTargetRef: {
+          apiVersion: 'apps/v1',
+          kind: 'Deployment',
+          name: 'my-deployment',
+        },
+        minReplicas: 1,
+        maxReplicas: 10,
+        metrics: [{
+          type: 'Resource',
+          resource: {
+            name: 'cpu',
+            target: { type: 'Utilization', averageUtilization: 80 },
+          },
+        }],
+      },
+    }),
+  },
+  
+  // Network
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'Service')!,
+    apiVersion: 'v1',
+    namespaced: true,
+    description: 'Exposes your workload internally or externally',
+    defaultTemplate: () => ({
+      apiVersion: 'v1',
+      kind: 'Service',
+      metadata: { name: 'my-service' },
+      spec: {
+        type: 'ClusterIP',
+        selector: { app: 'my-app' },
+        ports: [{ port: 80, targetPort: 80 }],
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'Ingress')!,
+    apiVersion: 'networking.k8s.io/v1',
+    namespaced: true,
+    description: 'Exposes HTTP/HTTPS routes to services',
+    defaultTemplate: () => ({
+      apiVersion: 'networking.k8s.io/v1',
+      kind: 'Ingress',
+      metadata: { 
+        name: 'my-ingress',
+        annotations: { 'kubernetes.io/ingress.class': 'nginx' },
+      },
+      spec: {
+        rules: [{
+          host: 'app.local',
+          http: {
+            paths: [{
+              path: '/',
+              pathType: 'Prefix',
+              backend: {
+                service: { name: 'my-service', port: { number: 80 } },
+              },
+            }],
+          },
+        }],
+      },
+    }),
+  },
+  
+  // Config
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'ConfigMap')!,
+    apiVersion: 'v1',
+    namespaced: true,
+    description: 'Non-sensitive configuration data',
+    defaultTemplate: () => ({
+      apiVersion: 'v1',
+      kind: 'ConfigMap',
+      metadata: { name: 'my-configmap' },
+      data: {
+        'config.yaml': '# Add your configuration here\n',
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'Secret')!,
+    apiVersion: 'v1',
+    namespaced: true,
+    description: 'Sensitive data stored securely',
+    defaultTemplate: () => ({
+      apiVersion: 'v1',
+      kind: 'Secret',
+      metadata: { name: 'my-secret' },
+      type: 'Opaque',
+      stringData: {
+        'password': 'change-me',
+      },
+    }),
+  },
+  
+  // Storage
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'PersistentVolumeClaim')!,
+    apiVersion: 'v1',
+    namespaced: true,
+    description: 'Requests persistent storage',
+    defaultTemplate: () => ({
+      apiVersion: 'v1',
+      kind: 'PersistentVolumeClaim',
+      metadata: { name: 'my-pvc' },
+      spec: {
+        accessModes: ['ReadWriteOnce'],
+        storageClassName: '',
+        resources: { requests: { storage: '1Gi' } },
+      },
+    }),
+  },
+  {
+    ...KIND_CONFIG.find(k => k.kind === 'StorageClass')!,
+    apiVersion: 'storage.k8s.io/v1',
+    namespaced: false,
+    description: 'Defines storage provisioner and parameters',
+    defaultTemplate: () => ({
+      apiVersion: 'storage.k8s.io/v1',
+      kind: 'StorageClass',
+      metadata: { name: 'my-storageclass' },
+      provisioner: 'kubernetes.io/no-provisioner',
+      reclaimPolicy: 'Delete',
+      volumeBindingMode: 'WaitForFirstConsumer',
+      allowVolumeExpansion: true,
+      parameters: {},
+    }),
+  },
+];
+
+/**
+ * Get creatable kind config by kind name
+ */
+export function getCreatableKind(kind: string): CreatableKindConfig | undefined {
+  return CREATABLE_KINDS.find(k => k.kind === kind);
+}
+
+/**
+ * Group creatable kinds by category
+ */
+export const CREATABLE_KINDS_BY_CATEGORY: Record<ResourceCategory, CreatableKindConfig[]> = 
+  CREATABLE_KINDS.reduce((acc, kind) => {
+    if (!acc[kind.category]) acc[kind.category] = [];
+    acc[kind.category].push(kind);
+    return acc;
+  }, {} as Record<ResourceCategory, CreatableKindConfig[]>);

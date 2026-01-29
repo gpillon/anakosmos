@@ -102,7 +102,9 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
             http.Error(w, "name required", http.StatusBadRequest)
             return
         }
-		vals, err := manager.GetValues(ns, name, true)
+        // all=true returns computed values (defaults + user), all=false returns user-only
+        allValues := r.URL.Query().Get("all") != "false"
+		vals, err := manager.GetValues(ns, name, allValues)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -153,12 +155,51 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
             http.Error(w, "name required", http.StatusBadRequest)
             return
         }
-        var values map[string]interface{}
-        if err := json.NewDecoder(r.Body).Decode(&values); err != nil {
-             http.Error(w, err.Error(), http.StatusBadRequest)
-             return
+        body, err := io.ReadAll(r.Body)
+        if err != nil {
+            http.Error(w, err.Error(), http.StatusBadRequest)
+            return
         }
-        rel, err := manager.Upgrade(ns, name, values)
+
+        type upgradeRequest struct {
+            RepoURL string                 `json:"repoUrl"`
+            Chart   string                 `json:"chart"`
+            Version string                 `json:"version"`
+            Values  map[string]interface{} `json:"values"`
+        }
+        var req upgradeRequest
+        _ = json.Unmarshal(body, &req)
+
+        var values map[string]interface{}
+        if req.Values != nil {
+            values = req.Values
+        } else {
+            if err := json.Unmarshal(body, &values); err != nil {
+                http.Error(w, err.Error(), http.StatusBadRequest)
+                return
+            }
+            if values != nil {
+                delete(values, "repoUrl")
+                delete(values, "chart")
+                delete(values, "version")
+                delete(values, "values")
+            }
+        }
+
+        if values == nil {
+            values = map[string]interface{}{}
+        }
+
+        var rel interface{}
+        if req.RepoURL != "" || req.Chart != "" {
+            if req.RepoURL == "" || req.Chart == "" {
+                http.Error(w, "repoUrl and chart required", http.StatusBadRequest)
+                return
+            }
+            rel, err = manager.UpgradeFromRepo(ns, name, req.RepoURL, req.Chart, req.Version, values)
+        } else {
+            rel, err = manager.Upgrade(ns, name, values)
+        }
         if err != nil {
              http.Error(w, err.Error(), http.StatusInternalServerError)
              return
