@@ -3,7 +3,6 @@ import {
   Pencil, 
   Trash2,
   ExternalLink,
-  ChevronRight
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import type { DraftResource } from '../../../store/useApplicationDraftStore';
@@ -127,10 +126,11 @@ export const ApplicationResourceCard: React.FC<ApplicationResourceCardProps> = (
   return (
     <div 
       className={clsx(
-        'group relative flex items-start gap-4 p-4 rounded-xl',
+        'group relative flex items-start gap-4 p-4 rounded-xl cursor-pointer',
         'bg-slate-900/60 border border-slate-800',
         'hover:border-slate-700 hover:bg-slate-900/80 transition-all'
       )}
+      onClick={onEdit}
     >
       {/* Color bar */}
       <div 
@@ -179,38 +179,21 @@ export const ApplicationResourceCard: React.FC<ApplicationResourceCardProps> = (
       </div>
       
       {/* Actions */}
-      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+      <div className="relative z-10 flex items-center gap-1 shrink-0">
         <button
-          onClick={onEdit}
+          onClick={(e) => { e.stopPropagation(); onEdit(); }}
           className="p-2 rounded-lg text-slate-400 hover:text-sky-400 hover:bg-sky-500/10 transition-colors"
           title="Edit resource"
         >
           <Pencil size={16} />
         </button>
         <button
-          onClick={onDelete}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
           className="p-2 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
           title="Remove resource"
         >
           <Trash2 size={16} />
         </button>
-      </div>
-      
-      {/* Click to edit indicator */}
-      <button
-        onClick={onEdit}
-        className="absolute inset-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/50"
-        aria-label="Edit resource"
-      >
-        <span className="sr-only">Click to edit</span>
-      </button>
-      
-      {/* Visual edit hint */}
-      <div className="absolute right-12 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-        <div className="flex items-center gap-1 text-xs text-slate-500">
-          <span>Click to edit</span>
-          <ChevronRight size={14} />
-        </div>
       </div>
     </div>
   );

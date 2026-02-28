@@ -142,7 +142,7 @@ export const ConnectionScreen: React.FC = () => {
             )}
 
             {/* Option 1: Internal Cluster (Proxy) */}
-            <button
+            {/* <button
               onClick={() => handleConnect('proxy')}
               disabled={isLoading}
               className="w-full p-4 flex items-center gap-4 bg-slate-700/50 hover:bg-slate-700 hover:border-blue-500 border border-transparent rounded-lg transition-all group text-left"
@@ -154,7 +154,7 @@ export const ConnectionScreen: React.FC = () => {
                 <h3 className="font-semibold text-slate-200">Internal Cluster</h3>
                 <p className="text-sm text-slate-400">Connect via local proxy</p>
               </div>
-            </button>
+            </button> */}
 
             {/* Option 2: Custom API Server */}
             <div className="space-y-2">
