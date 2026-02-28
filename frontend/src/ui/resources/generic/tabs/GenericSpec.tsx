@@ -3,11 +3,12 @@ import { Card, CardHeader, CardBody } from '../../shared';
 import { FileJson, Database, ChevronRight, ChevronDown, Copy, Check } from 'lucide-react';
 
 interface GenericSpecProps {
-  rawData: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rawData?: any;
 }
 
 // Recursive JSON tree renderer
-const JsonTree: React.FC<{ data: any; depth?: number; path?: string }> = ({ data, depth = 0, path = '' }) => {
+const JsonTree: React.FC<{ data: unknown; depth?: number; path?: string }> = ({ data, depth = 0, path = '' }) => {
   const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set());
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
 
@@ -120,7 +121,7 @@ const JsonTree: React.FC<{ data: any; depth?: number; path?: string }> = ({ data
               <div key={key} className="py-0.5">
                 <span className="text-cyan-400">{key}</span>
                 <span className="text-slate-500">: </span>
-                <JsonTree data={data[key]} depth={depth + 1} path={`${path}.${key}`} />
+                <JsonTree data={(data as Record<string, unknown>)[key]} depth={depth + 1} path={`${path}.${key}`} />
               </div>
             ))}
           </div>

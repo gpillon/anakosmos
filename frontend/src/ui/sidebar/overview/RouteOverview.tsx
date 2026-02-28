@@ -12,7 +12,7 @@ export const RouteOverview: React.FC<OverviewContext> = ({ resource, raw, onOpen
   const host = spec.host;
   const to = spec.to?.name;
   const wildcard = spec.wildcardPolicy;
-  const admitted = status.ingress?.[0]?.conditions?.find((c: any) => c.type === 'Admitted')?.status;
+  const admitted = status.ingress?.[0]?.conditions?.find((c: { type?: string }) => c.type === 'Admitted')?.status;
 
   return (
     <div className="space-y-6">

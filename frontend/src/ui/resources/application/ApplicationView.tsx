@@ -11,6 +11,7 @@ interface ApplicationViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const applicationTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'source', label: 'Source' },

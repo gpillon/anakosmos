@@ -61,16 +61,16 @@ export const IngressTLS: React.FC<Props> = ({ model, updateModel }) => {
         // We assume cert-manager v1 is used
         const issuersList = await client.listResources('cert-manager.io/v1', 'issuers');
         if (issuersList?.items) {
-          setIssuers(issuersList.items
-            .filter((i: any) => i.metadata.namespace === metadata?.namespace)
-            .map((i: any) => i.metadata.name)
+          setIssuers((issuersList.items as Array<{ metadata?: { namespace?: string; name?: string } }>)
+            .filter((i) => i.metadata?.namespace === metadata?.namespace)
+            .map((i) => i.metadata?.name ?? '')
           );
         }
 
         // Try fetching ClusterIssuers
         const clusterIssuersList = await client.listResources('cert-manager.io/v1', 'clusterissuers');
         if (clusterIssuersList?.items) {
-          setClusterIssuers(clusterIssuersList.items.map((i: any) => i.metadata.name));
+          setClusterIssuers((clusterIssuersList.items as Array<{ metadata?: { name?: string } }>).map((i) => i.metadata?.name ?? ''));
         }
       } catch (e) {
         console.warn('Failed to fetch cert-manager resources. Cert-manager might not be installed.', e);

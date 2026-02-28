@@ -11,6 +11,7 @@ interface HelmReleaseViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const helmReleaseTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'values', label: 'Values' },

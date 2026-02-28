@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import type { ClusterResource } from '../../../../api/types';
 import type { V1Deployment, V1Volume } from '../../../../api/k8s-types';
 import { 
@@ -66,6 +66,7 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, model, updateMode
   
   const [expandedVolumes, setExpandedVolumes] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
+  const volumeCounterRef = useRef(0);
 
   const updateVolumes = (newVolumes: V1Volume[]) => {
     updateModel(current => {
@@ -96,8 +97,9 @@ export const DeploymentVolumes: React.FC<Props> = ({ resource, model, updateMode
   };
 
   const addVolume = (type: VolumeType) => {
-    const baseName = `volume-${Date.now()}`;
-    let newVolume: V1Volume = { name: baseName };
+    volumeCounterRef.current += 1;
+    const baseName = `volume-${volumeCounterRef.current}`;
+    const newVolume: V1Volume = { name: baseName };
 
     switch (type) {
       case 'emptyDir':

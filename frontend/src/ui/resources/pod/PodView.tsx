@@ -15,6 +15,7 @@ interface PodViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const podTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'containers', label: 'Containers' },
@@ -192,6 +193,7 @@ export const PodView: React.FC<PodViewProps> = ({ resource, activeTab }) => {
   // Update selected container when pod data loads or changes
   useEffect(() => {
     if (defaultContainer && !selectedContainer) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedContainer(defaultContainer);
     }
   }, [defaultContainer, selectedContainer]);

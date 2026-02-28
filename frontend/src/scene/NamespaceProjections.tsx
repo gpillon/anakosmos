@@ -1,4 +1,5 @@
 import React, { useState, useRef, memo, useMemo } from 'react';
+import type { ClusterResource } from '../api/types';
 import * as THREE from 'three';
 import { Text } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
@@ -91,14 +92,14 @@ const NamespaceZone = memo<ZoneProps>(({ namespace, positionsKey, centerX, cente
     }
     s.closePath();
     return s;
-  }, [positionsKey, hullPoints]); // positionsKey changes when hullPoints changes significantly
+  }, [hullPoints]);
 
   // Create points for the line loop matching the shape (local XY plane)
   const linePoints = useMemo(() => {
      if (hullPoints.length === 0) return null;
      // For LineLoop we don't need to duplicate the first point
      return hullPoints.map(p => new THREE.Vector3(p[0], p[1], 0));
-  }, [positionsKey, hullPoints]);
+  }, [hullPoints]);
 
   if (!shape || !linePoints) return null;
 
@@ -164,8 +165,8 @@ interface ZoneData {
   hullPoints: [number, number][];
 }
 
-export const NamespaceProjections: React.FC<{ 
-  resources: any;
+export const NamespaceProjections: React.FC<{
+  resources: Record<string, ClusterResource>;
   positionsRef: React.RefObject<Record<string, [number, number, number]>>;
 }> = ({ resources, positionsRef }) => {
   const [zones, setZones] = useState<Map<string, ZoneData>>(new Map());
@@ -181,7 +182,7 @@ export const NamespaceProjections: React.FC<{
     // Group resources by namespace using plain arrays (no THREE.Vector3)
     const nsGroups = new Map<string, [number, number][]>();
     
-    Object.values(resources as Record<string, any>).forEach((res: any) => {
+    Object.values(resources).forEach((res: ClusterResource) => {
       const pos = positionsRef.current[res.id];
       if (!pos) return;
       
@@ -202,11 +203,11 @@ export const NamespaceProjections: React.FC<{
       
       // Calculate bounds signature
       let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
-      let sumX = 0, sumZ = 0;
       points.forEach(p => {
-        sumX += p[0]; sumZ += p[1];
-        minX = Math.min(minX, p[0]); maxX = Math.max(maxX, p[0]);
-        minZ = Math.min(minZ, p[1]); maxZ = Math.max(maxZ, p[1]);
+        minX = Math.min(minX, p[0]);
+        maxX = Math.max(maxX, p[0]);
+        minZ = Math.min(minZ, p[1]);
+        maxZ = Math.max(maxZ, p[1]);
       });
       
       // Create a key based on count and rough bounds (rounded to reduce jitter)

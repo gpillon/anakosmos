@@ -12,7 +12,7 @@ import { useResourceDetailsStore } from '../store/useResourceDetailsStore';
 import { LinkLayer } from './LinkLayer';
 import { NamespaceProjections } from './NamespaceProjections';
 import { useForceLayout, shouldShowResource } from '../logic/LayoutEngine';
-import type { ClusterResource } from '../api/types';
+import type { ClusterResource, ClusterLink } from '../api/types';
 import { SceneStatsReporter } from '../ui/HUD';
 import { AnimatedInstancedMaterial } from './AnimatedInstancedMaterial';
 import { CreationScene } from './CreationScene';
@@ -111,6 +111,8 @@ const CameraManager: React.FC<{ selectedPos?: [number, number, number] }> = ({ s
         setLastPos(null);
         setLastTarget(null);
       }
+  // lastPos and lastTarget are intentionally excluded - they are state used for restore, not triggers
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPos]);
 
   return <CameraControls 
@@ -183,7 +185,7 @@ const LabelsLayer: React.FC<{
   hideSystemNamespaces: boolean;
   activePreset: string;
   hiddenResourceKinds: string[];
-  links: any[]; // Avoid circular dependency with ClusterLink if possible, or import it
+  links: ClusterLink[];
 }> = ({ resources, positionsRef, selectedId, hoveredId, focusedKind, statusFilters, searchQuery, filterNamespaces, hideSystemNamespaces, activePreset, hiddenResourceKinds, links }) => {
     
     // Optimize: Separate static filters (expensive) from interactive selection (cheap/frequent)
@@ -257,7 +259,9 @@ const InstancedNodes: React.FC<{
   
   // Store refs for stable access in useFrame
   const resourcesRef = useRef(resources);
-  resourcesRef.current = resources;
+  useEffect(() => {
+    resourcesRef.current = resources;
+  }, [resources]);
   
   // Stable refs for attribute arrays - only resize when count changes
   const unhealthyArrayRef = useRef<Float32Array | null>(null);
@@ -265,7 +269,7 @@ const InstancedNodes: React.FC<{
   const prevCountRef = useRef(0);
   
   // Max instance count with headroom to avoid frequent recreations
-  const maxCount = useMemo(() => Math.max(resources.length + 50, 100), [resources.length > prevCountRef.current ? resources.length : prevCountRef.current]);
+  const maxCount = useMemo(() => Math.max(resources.length + 50, 100), [resources.length]);
 
   // Setup attributes when mesh is available or count changes significantly
   useEffect(() => {
@@ -388,7 +392,7 @@ const InstancedNodes: React.FC<{
   });
 
   // Handle pointer events - use resourcesRef for stable reference
-  const handlePointerEvent = useCallback((event: any, handler: (id: string) => void) => {
+  const handlePointerEvent = useCallback((event: { instanceId?: number; stopPropagation: () => void }, handler: (id: string) => void) => {
     event.stopPropagation();
     if (event.instanceId !== undefined && event.instanceId < resourcesRef.current.length) {
       const res = resourcesRef.current[event.instanceId];
@@ -625,6 +629,8 @@ const MainClusterScene: React.FC = () => {
             However, we can't easily access interpolated ref here outside the LayoutSystem render prop unless we restructure.
             For now, let's keep camera on TARGET positions to be responsive, or move it inside.
         */}
+        {/* Intentional ref access during render for R3F camera positioning */}
+        {/* eslint-disable-next-line react-hooks/refs */}
         <CameraManager selectedPos={selectedResourceId ? targetPositionsRef.current[selectedResourceId] : undefined} />
 
         {hasPositions && (

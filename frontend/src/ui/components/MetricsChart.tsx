@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Cpu, HardDrive, Activity, AlertTriangle } from 'lucide-react';
+import type { KubeClient } from '../../api/kubeClient';
 
 interface MetricPoint {
   timestamp: number;
@@ -28,6 +29,7 @@ const MetricsChart: React.FC<MetricsChartProps> = ({
 
   // Update history when value changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setHistory(prev => {
       const newPoint = { timestamp: Date.now(), value: currentValue };
       const updated = [...prev, newPoint].slice(-maxDataPoints);
@@ -147,7 +149,7 @@ const MetricsChart: React.FC<MetricsChartProps> = ({
 interface PodMetricsDisplayProps {
   namespace: string;
   podName: string;
-  client: any;
+  client: KubeClient | null;
 }
 
 export const PodMetricsDisplay: React.FC<PodMetricsDisplayProps> = ({
@@ -165,7 +167,7 @@ export const PodMetricsDisplay: React.FC<PodMetricsDisplayProps> = ({
       memory: { usage: number; formatted: string };
     }>;
   } | null>(null);
-  const [_error, setError] = useState<string | null>(null);
+  const [, setError] = useState<string | null>(null);
 
   // Check if metrics-server is available
   useEffect(() => {
@@ -196,7 +198,7 @@ export const PodMetricsDisplay: React.FC<PodMetricsDisplayProps> = ({
           setMetrics(data);
           setError(null);
         }
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.warn('Metrics fetch error:', e);
       }
     };
@@ -292,7 +294,7 @@ export const PodMetricsDisplay: React.FC<PodMetricsDisplayProps> = ({
 
 interface NodeMetricsDisplayProps {
   nodeName: string;
-  client: any;
+  client: KubeClient | null;
 }
 
 export const NodeMetricsDisplay: React.FC<NodeMetricsDisplayProps> = ({
@@ -327,7 +329,7 @@ export const NodeMetricsDisplay: React.FC<NodeMetricsDisplayProps> = ({
       try {
         const data = await client.getNodeMetrics(nodeName);
         if (data) setMetrics(data);
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.warn('Node metrics fetch error:', e);
       }
     };

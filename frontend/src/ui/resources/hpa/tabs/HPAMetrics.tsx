@@ -9,20 +9,18 @@ interface HPAMetricsProps {
   updateModel: (updater: (current: V2HorizontalPodAutoscaler) => V2HorizontalPodAutoscaler) => void;
 }
 
-const getMetricIcon = (type: string) => {
-  switch (type) {
-    case 'Resource': return Cpu;
-    case 'Pods': return Box;
-    case 'Object': return Server;
-    case 'External': return Globe;
-    case 'ContainerResource': return HardDrive;
-    default: return BarChart3;
-  }
+// Module-level icon map to avoid creating components during render
+const METRIC_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  Resource: Cpu,
+  Pods: Box,
+  Object: Server,
+  External: Globe,
+  ContainerResource: HardDrive,
 };
 
 const MetricCard: React.FC<{ spec: V2MetricSpec; status?: V2MetricStatus }> = ({ spec, status }) => {
   const type = spec.type;
-  const Icon = getMetricIcon(type || '');
+  const Icon = METRIC_ICON_MAP[type || ''] ?? BarChart3;
 
   let name = '';
   let targetType = '';

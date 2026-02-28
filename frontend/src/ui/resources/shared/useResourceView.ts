@@ -35,7 +35,7 @@ interface UseResourceViewResult<T> {
  * Hook that provides common functionality for all resource views.
  * Handles data fetching, YAML loading, delete, apply changes, etc.
  */
-export function useResourceView<T = any>({ 
+export function useResourceView<T = unknown>({ 
   resource, 
   activeTab 
 }: UseResourceViewOptions): UseResourceViewResult<T> {
@@ -65,6 +65,7 @@ export function useResourceView<T = any>({
   // Fetch raw data if not available in resource
   useEffect(() => {
     if (!resource.raw && !fetchedRaw && !fetchingRaw && client) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetching pattern
       setFetchingRaw(true);
       client.getResource(resource.namespace, resource.kind, resource.name)
         .then(raw => setFetchedRaw(raw as T))
@@ -76,6 +77,7 @@ export function useResourceView<T = any>({
   // Reset fetchedRaw when resource changes (new version from watcher)
   useEffect(() => {
     if (resource.raw) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- state reset when resource updates
       setFetchedRaw(null);
     }
   }, [resource.raw]);
@@ -83,6 +85,7 @@ export function useResourceView<T = any>({
   // Fetch YAML when yaml tab is active
   useEffect(() => {
     if (activeTab === 'yaml' && client) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- data fetching pattern
       setIsYamlLoading(true);
       client.getYaml(resource.namespace, resource.kind, resource.name)
         .then((content) => {

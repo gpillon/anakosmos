@@ -26,7 +26,7 @@ export const Sidebar: React.FC = () => {
   const openDetails = useResourceDetailsStore(state => state.openDetails);
 
   const [activeTab, setActiveTab] = useState<SidebarTab>('overview');
-  const [events, setEvents] = useState<any[]>([]);
+  const [events, setEvents] = useState<Record<string, unknown>[]>([]);
   const [yamlContent, setYamlContent] = useState<string>('');
   const [isYamlLoading, setIsYamlLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
@@ -68,9 +68,10 @@ export const Sidebar: React.FC = () => {
       try {
         const rawContent = await client.getYaml(resource.namespace, resource.kind, resource.name);
         try {
-          const doc = yaml.load(rawContent) as any;
-          if (doc?.metadata?.managedFields) {
-            delete doc.metadata.managedFields;
+          const doc = yaml.load(rawContent) as Record<string, unknown>;
+          const metadata = doc?.metadata as Record<string, unknown> | undefined;
+          if (metadata?.managedFields) {
+            delete metadata.managedFields;
           }
           setYamlContent(yaml.dump(doc));
         } catch (e) {
@@ -93,29 +94,32 @@ export const Sidebar: React.FC = () => {
       await client.applyYaml(resource.namespace, resource.kind, resource.name, yamlContent);
       setFeedback({ type: 'success', message: 'Resource updated' });
       setTimeout(() => setFeedback(null), 3000);
-    } catch (e: any) {
+    } catch (e: unknown) {
       let shortError = 'Update failed';
-      let fullErrorForModal = e.message || JSON.stringify(e, null, 2);
+      let fullErrorForModal = e instanceof Error ? e.message : JSON.stringify(e, null, 2);
+      const err = e as { details?: unknown; message?: string };
 
-      if (e.details && typeof e.details === 'object') {
-        if (e.details.message) {
-          shortError = e.details.message;
+      if (err.details && typeof err.details === 'object') {
+        const details = err.details as Record<string, unknown>;
+        if (details.message) {
+          shortError = String(details.message);
         }
-        fullErrorForModal = JSON.stringify(e.details, null, 2);
+        fullErrorForModal = JSON.stringify(err.details, null, 2);
       } else {
         try {
-          const jsonMatch = (e.message || '').match(/\{.*\}/);
+          const msg = err.message || '';
+          const jsonMatch = msg.match(/\{.*\}/);
           if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+            const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
             if (parsed.message) {
-              shortError = parsed.message;
+              shortError = String(parsed.message);
             }
             fullErrorForModal = JSON.stringify(parsed, null, 2);
           } else {
-            shortError = e.message;
+            shortError = err.message || shortError;
           }
         } catch {
-          shortError = e.message;
+          shortError = err.message || shortError;
         }
       }
 
@@ -126,7 +130,7 @@ export const Sidebar: React.FC = () => {
     }
   };
 
-  const applyUpdatedRaw = useCallback(async (updatedRaw: any, successMessage: string) => {
+  const applyUpdatedRaw = useCallback(async (updatedRaw: Record<string, unknown>, successMessage: string) => {
     if (!client || !resource) return;
     setActionLoading(true);
     try {
@@ -135,9 +139,9 @@ export const Sidebar: React.FC = () => {
       await client.applyYaml(resource.namespace, resource.kind, resource.name, yaml.dump(cleaned));
       setFeedback({ type: 'success', message: successMessage });
       setTimeout(() => setFeedback(null), 2500);
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      setFeedback({ type: 'error', message: e.message || 'Action failed' });
+      setFeedback({ type: 'error', message: e instanceof Error ? e.message : 'Action failed' });
     } finally {
       setActionLoading(false);
     }

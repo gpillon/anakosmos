@@ -22,6 +22,7 @@ export interface KubernetesError {
 /**
  * Parse a Kubernetes API error response into a structured format
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function parseKubernetesError(error: unknown): KubernetesError | null {
   if (!error) return null;
   
@@ -132,7 +133,7 @@ export const ValidationErrorProvider: React.FC<ValidationErrorProviderProps> = (
   onClearErrors,
   children,
 }) => {
-  const errors = error?.causes || [];
+  const errors = useMemo(() => error?.causes ?? [], [error?.causes]);
   const errorMessage = error?.message || null;
   const errorReason = error?.reason || null;
 
@@ -198,6 +199,7 @@ export const ValidationErrorProvider: React.FC<ValidationErrorProviderProps> = (
 /**
  * Hook to access validation errors
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useValidationErrors() {
   return useContext(ValidationErrorContext);
 }
@@ -206,6 +208,7 @@ export function useValidationErrors() {
  * Hook to check if a specific field has an error
  * @param fieldPath - The field path to check (e.g., "spec.template.spec.containers[0].image")
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function useFieldError(fieldPath: string) {
   const { hasFieldError, getFieldError, getFieldErrors } = useValidationErrors();
   
@@ -219,6 +222,7 @@ export function useFieldError(fieldPath: string) {
 /**
  * Helper to build a field path for array items
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function fieldPath(base: string, ...parts: (string | number)[]): string {
   let path = base;
   for (const part of parts) {

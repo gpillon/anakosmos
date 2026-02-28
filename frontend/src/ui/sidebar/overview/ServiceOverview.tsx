@@ -12,7 +12,7 @@ export const ServiceOverview: React.FC<OverviewContext> = ({ resource, raw, onOp
   const resources = useClusterStore(state => state.resources);
   const spec = raw?.spec || {};
   const status = raw?.status || {};
-  const selector = spec.selector || {};
+  const selector = useMemo(() => spec.selector || {}, [spec.selector]);
   const ports = spec.ports || [];
 
   const matchingPods = useMemo(() => {
@@ -46,7 +46,7 @@ export const ServiceOverview: React.FC<OverviewContext> = ({ resource, raw, onOp
         />
       </SidebarSection>
 
-      <SidebarSection title="Endpoints" subtitle={ports.map((p: any) => `${p.port}/${p.protocol || 'TCP'}`).join(', ') || '—'}>
+      <SidebarSection title="Endpoints" subtitle={ports.map((p: { port?: number; protocol?: string }) => `${p.port}/${p.protocol || 'TCP'}`).join(', ') || '—'}>
         <div className="flex items-center gap-2 text-xs text-slate-400">
           <Network size={12} />
           {Object.keys(selector || {}).length > 0 ? 'Selectors active' : 'No selector defined'}

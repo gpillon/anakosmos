@@ -9,6 +9,7 @@ interface GenericViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const genericTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'spec', label: 'Spec & Status' },
@@ -48,8 +49,8 @@ export const GenericView: React.FC<GenericViewProps> = ({ resource, activeTab })
       onScrollToEvents={scrollToEvents}
       eventsRef={eventsRef}
     >
-      {activeTab === 'overview' && <GenericOverview key={resourceKey} resource={fullResource} rawData={rawData} onApply={applyChanges} />}
-      {activeTab === 'spec' && <GenericSpec key={resourceKey} rawData={rawData} />}
+      {activeTab === 'overview' && <GenericOverview key={resourceKey} resource={fullResource} rawData={rawData as Record<string, unknown>} onApply={applyChanges} />}
+      {activeTab === 'spec' && <GenericSpec key={resourceKey} rawData={rawData as Record<string, unknown>} />}
     </ResourceViewLayout>
   );
 };

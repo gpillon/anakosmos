@@ -43,6 +43,7 @@ interface StatsState {
     setStats: (s: Partial<StatsState>) => void;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useStatsStore = create<StatsState>((set) => ({
     fps: 0, frameTime: 0, calls: 0, triangles: 0, points: 0, lines: 0, activeObjects: 0, geometries: 0, textures: 0,
     setStats: (s) => set(s)

@@ -13,28 +13,29 @@ import { KIND_CONFIG } from '../../../../config/resourceKinds';
 
 interface GenericOverviewProps {
   resource: ClusterResource;
-  rawData: any;
-  onApply: (data: any) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  rawData?: any;
+  onApply: (data: Record<string, unknown>) => Promise<void>;
 }
 
-// Icon mapping for common resource kinds
-const getKindIcon = (kind: string) => {
-  const config = KIND_CONFIG.find(k => k.kind === kind);
-  if (config) return config.icon;
-  return Box;
-};
+// Icon mapping - module-level lookup to avoid creating components during render
+const KIND_ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string }>> = Object.fromEntries(
+  KIND_CONFIG.map((k) => [k.kind, k.icon])
+);
 
 // Determine health status from resource
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const determineHealthStatus = (resource: ClusterResource, rawData: any): { health: HealthStatus; statusText: string } => {
   const status = resource.status;
   
   // Check conditions if present
-  const conditions = rawData?.status?.conditions;
+  const conditions = (rawData?.status as Record<string, unknown> | undefined)?.conditions;
   if (conditions && Array.isArray(conditions)) {
-    const readyCond = conditions.find((c: any) => c.type === 'Ready');
-    const availableCond = conditions.find((c: any) => c.type === 'Available');
-    const failedCond = conditions.find((c: any) => 
-      (c.type === 'Failed' || c.type?.includes('Error') || c.reason?.includes('Failed')) && c.status === 'True'
+    const conds = conditions as Array<{ type?: string; status?: string; reason?: string }>;
+    const readyCond = conds.find((c) => c.type === 'Ready');
+    const availableCond = conds.find((c) => c.type === 'Available');
+    const failedCond = conds.find((c) => 
+      (c.type === 'Failed' || c.type?.includes?.('Error') || c.reason?.includes?.('Failed')) && c.status === 'True'
     );
     
     if (failedCond) return { health: 'error', statusText: failedCond.reason || 'Failed' };
@@ -56,52 +57,54 @@ const determineHealthStatus = (resource: ClusterResource, rawData: any): { healt
 };
 
 // Extract important info from spec
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const extractSpecHighlights = (rawData: any): Array<{ label: string; value: string }> => {
   const highlights: Array<{ label: string; value: string }> = [];
-  const spec = rawData?.spec;
+  const spec = rawData?.spec as Record<string, unknown> | undefined;
   
   if (!spec) return highlights;
   
   // Common spec fields
   if (spec.replicas !== undefined) highlights.push({ label: 'Replicas', value: String(spec.replicas) });
   if (spec.selector) {
-    const matchLabels = spec.selector.matchLabels;
+    const matchLabels = (spec.selector as Record<string, unknown>)?.matchLabels;
     if (matchLabels) {
       highlights.push({ label: 'Selector', value: Object.entries(matchLabels).map(([k, v]) => `${k}=${v}`).join(', ') });
     }
   }
-  if (spec.type) highlights.push({ label: 'Type', value: spec.type });
-  if (spec.clusterIP) highlights.push({ label: 'Cluster IP', value: spec.clusterIP });
+  if (spec.type) highlights.push({ label: 'Type', value: String(spec.type) });
+  if (spec.clusterIP) highlights.push({ label: 'Cluster IP', value: String(spec.clusterIP) });
   if (spec.ports && Array.isArray(spec.ports)) {
-    highlights.push({ label: 'Ports', value: spec.ports.map((p: any) => `${p.port}/${p.protocol || 'TCP'}`).join(', ') });
+    highlights.push({ label: 'Ports', value: (spec.ports as Array<{ port?: number; protocol?: string }>).map((p) => `${p.port}/${p.protocol || 'TCP'}`).join(', ') });
   }
-  if (spec.schedule) highlights.push({ label: 'Schedule', value: spec.schedule });
+  if (spec.schedule) highlights.push({ label: 'Schedule', value: String(spec.schedule) });
   if (spec.suspend !== undefined) highlights.push({ label: 'Suspended', value: spec.suspend ? 'Yes' : 'No' });
   if (spec.completions !== undefined) highlights.push({ label: 'Completions', value: String(spec.completions) });
   if (spec.parallelism !== undefined) highlights.push({ label: 'Parallelism', value: String(spec.parallelism) });
   if (spec.backoffLimit !== undefined) highlights.push({ label: 'Backoff Limit', value: String(spec.backoffLimit) });
   if (spec.minReplicas !== undefined) highlights.push({ label: 'Min Replicas', value: String(spec.minReplicas) });
   if (spec.maxReplicas !== undefined) highlights.push({ label: 'Max Replicas', value: String(spec.maxReplicas) });
-  if (spec.storageClassName) highlights.push({ label: 'Storage Class', value: spec.storageClassName });
-  if (spec.accessModes) highlights.push({ label: 'Access Modes', value: spec.accessModes.join(', ') });
-  if (spec.capacity?.storage) highlights.push({ label: 'Capacity', value: spec.capacity.storage });
-  if (spec.resources?.requests?.storage) highlights.push({ label: 'Requested Storage', value: spec.resources.requests.storage });
-  if (spec.provisioner) highlights.push({ label: 'Provisioner', value: spec.provisioner });
-  if (spec.reclaimPolicy) highlights.push({ label: 'Reclaim Policy', value: spec.reclaimPolicy });
-  if (spec.volumeBindingMode) highlights.push({ label: 'Volume Binding', value: spec.volumeBindingMode });
+  if (spec.storageClassName) highlights.push({ label: 'Storage Class', value: String(spec.storageClassName) });
+  if (spec.accessModes) highlights.push({ label: 'Access Modes', value: (spec.accessModes as string[]).join(', ') });
+  if ((spec.capacity as Record<string, unknown>)?.storage) highlights.push({ label: 'Capacity', value: String((spec.capacity as Record<string, unknown>).storage) });
+  if ((spec.resources as Record<string, unknown>)?.requests) highlights.push({ label: 'Requested Storage', value: String(((spec.resources as Record<string, Record<string, Record<string, unknown>>>).requests as Record<string, unknown>).storage) });
+  if (spec.provisioner) highlights.push({ label: 'Provisioner', value: String(spec.provisioner) });
+  if (spec.reclaimPolicy) highlights.push({ label: 'Reclaim Policy', value: String(spec.reclaimPolicy) });
+  if (spec.volumeBindingMode) highlights.push({ label: 'Volume Binding', value: String(spec.volumeBindingMode) });
   
   return highlights.slice(0, 8); // Limit to 8 items
 };
 
 // Extract important info from status
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const extractStatusHighlights = (rawData: any): Array<{ label: string; value: string; isError?: boolean }> => {
   const highlights: Array<{ label: string; value: string; isError?: boolean }> = [];
-  const status = rawData?.status;
+  const status = rawData?.status as Record<string, unknown> | undefined;
   
   if (!status) return highlights;
   
   // Common status fields
-  if (status.phase) highlights.push({ label: 'Phase', value: status.phase });
+  if (status.phase) highlights.push({ label: 'Phase', value: String(status.phase) });
   if (status.replicas !== undefined) highlights.push({ label: 'Replicas', value: String(status.replicas) });
   if (status.readyReplicas !== undefined) highlights.push({ label: 'Ready', value: String(status.readyReplicas) });
   if (status.availableReplicas !== undefined) highlights.push({ label: 'Available', value: String(status.availableReplicas) });
@@ -109,7 +112,7 @@ const extractStatusHighlights = (rawData: any): Array<{ label: string; value: st
   if (status.currentReplicas !== undefined) highlights.push({ label: 'Current', value: String(status.currentReplicas) });
   if (status.desiredReplicas !== undefined) highlights.push({ label: 'Desired', value: String(status.desiredReplicas) });
   if (status.succeeded !== undefined) highlights.push({ label: 'Succeeded', value: String(status.succeeded) });
-  if (status.failed !== undefined && status.failed > 0) highlights.push({ label: 'Failed', value: String(status.failed), isError: true });
+  if (typeof status.failed === 'number' && status.failed > 0) highlights.push({ label: 'Failed', value: String(status.failed), isError: true });
   if (status.active !== undefined) highlights.push({ label: 'Active', value: String(status.active) });
   if (status.startTime) highlights.push({ label: 'Started', value: formatAge(String(status.startTime)) + ' ago' });
   if (status.completionTime) highlights.push({ label: 'Completed', value: formatAge(String(status.completionTime)) + ' ago' });
@@ -126,9 +129,9 @@ export const GenericOverview: React.FC<GenericOverviewProps> = ({ resource, rawD
 
   // Extract conditions
   const conditions = useMemo(() => {
-    const conds = rawData?.status?.conditions;
+    const conds = (rawData?.status as Record<string, unknown> | undefined)?.conditions;
     if (!conds || !Array.isArray(conds)) return [];
-    return conds.map((c: any) => ({
+    return (conds as Array<{ type?: string; status?: string; reason?: string; message?: string; lastTransitionTime?: string }>).map((c) => ({
       type: c.type || '',
       status: c.status || '',
       reason: c.reason,
@@ -137,7 +140,7 @@ export const GenericOverview: React.FC<GenericOverviewProps> = ({ resource, rawD
     }));
   }, [rawData]);
 
-  const KindIcon = getKindIcon(resource.kind);
+  const KindIcon = KIND_ICON_MAP[resource.kind] ?? Box;
 
   return (
     <div className="space-y-6">

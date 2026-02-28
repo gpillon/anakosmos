@@ -10,6 +10,7 @@ interface SecretViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const secretTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'data', label: 'Data' },

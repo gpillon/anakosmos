@@ -60,9 +60,14 @@ func ProxyHandler() http.HandlerFunc {
 	}
 }
 
-// InternalProxyHandler handles requests to the local/in-cluster Kubernetes API
-func InternalProxyHandler(config *rest.Config) http.HandlerFunc {
+// InternalProxyHandler handles requests to the local/in-cluster Kubernetes API.
+// Blocked unless inClusterMode is true (security gate).
+func InternalProxyHandler(config *rest.Config, inClusterMode bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !inClusterMode {
+			http.Error(w, "In-cluster mode is disabled. Set IN_CLUSTER_MODE=true to allow proxy access, or connect to a remote cluster.", http.StatusForbidden)
+			return
+		}
 		if config == nil {
 			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
 			return

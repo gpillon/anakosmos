@@ -85,6 +85,12 @@ tolerations: []
 
 affinity: {}
 
+# In-cluster mode: auto-connects to the local cluster using the
+# ServiceAccount without requiring manual authentication.
+# When disabled, users must provide credentials via the connection screen.
+inClusterMode:
+  enabled: false
+
 # RBAC configuration
 rbac:
   # Specifies whether RBAC resources should be created

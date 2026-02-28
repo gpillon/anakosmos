@@ -168,6 +168,7 @@ export const FieldErrorIndicator: React.FC<{ message?: string | null }> = ({ mes
 /**
  * HOC-style wrapper that adds error styling to a field
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const withFieldError = (hasError: boolean, className?: string) => {
   return clsx(
     className,

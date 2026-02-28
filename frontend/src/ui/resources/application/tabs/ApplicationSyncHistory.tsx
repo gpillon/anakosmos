@@ -14,6 +14,16 @@ interface Props {
   resource: ClusterResource;
 }
 
+interface SyncHistoryEntry {
+  id?: number;
+  revision?: string;
+  deployedAt?: string;
+  deployStartedAt?: string;
+  source?: Record<string, unknown>;
+  sources?: Array<Record<string, unknown>>;
+  initiatedBy?: { automated?: boolean; username?: string };
+}
+
 export const ApplicationSyncHistory: React.FC<Props> = ({ resource }) => {
   const raw = resource.raw;
   const status = raw?.status || {};
@@ -28,7 +38,7 @@ export const ApplicationSyncHistory: React.FC<Props> = ({ resource }) => {
   }
 
   // Sort by ID descending (most recent first)
-  const sortedHistory = [...history].sort((a: any, b: any) => b.id - a.id);
+  const sortedHistory = [...history].sort((a: { id?: number }, b: { id?: number }) => (b.id ?? 0) - (a.id ?? 0));
 
   return (
     <div className="space-y-4">
@@ -51,7 +61,7 @@ export const ApplicationSyncHistory: React.FC<Props> = ({ resource }) => {
         <div className="absolute left-6 top-0 bottom-0 w-px bg-slate-700" />
         
         <div className="space-y-4">
-          {sortedHistory.map((entry: any, index: number) => (
+          {sortedHistory.map((entry: SyncHistoryEntry, index: number) => (
             <HistoryEntry 
               key={entry.id} 
               entry={entry} 
@@ -66,7 +76,7 @@ export const ApplicationSyncHistory: React.FC<Props> = ({ resource }) => {
 };
 
 const HistoryEntry: React.FC<{ 
-  entry: any; 
+  entry: SyncHistoryEntry; 
   isLatest: boolean;
   repoUrl?: string;
 }> = ({ entry, isLatest, repoUrl }) => {
@@ -131,7 +141,7 @@ const HistoryEntry: React.FC<{
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-500">
             <Clock size={12} />
-            {formatDate(entry.deployedAt)}
+            {formatDate(entry.deployedAt ?? '')}
             {duration && (
               <span className="text-slate-600">({duration})</span>
             )}
@@ -165,9 +175,9 @@ const HistoryEntry: React.FC<{
             <div className="flex items-center gap-3">
               <GitBranch size={14} className="text-slate-500 shrink-0" />
               <div className="text-sm text-slate-400 truncate">
-                {source.path || source.chart || source.repoURL?.split('/').pop()?.replace('.git', '')}
-                {source.targetRevision && source.targetRevision !== 'HEAD' && (
-                  <span className="ml-2 text-slate-500">@ {source.targetRevision}</span>
+                {String(source.path ?? source.chart ?? (typeof source.repoURL === 'string' ? source.repoURL.split('/').pop()?.replace('.git', '') : '') ?? '')}
+                {source.targetRevision != null && String(source.targetRevision) !== 'HEAD' && (
+                  <span className="ml-2 text-slate-500">@ {String(source.targetRevision)}</span>
                 )}
               </div>
             </div>

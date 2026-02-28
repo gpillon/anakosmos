@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ClusterResource } from '../../../../api/types';
-import type { V1Pod } from '../../../../api/k8s-types';
+import type { V1Pod, V1ServicePort } from '../../../../api/k8s-types';
 import { useClusterStore } from '../../../../store/useClusterStore';
 import { useResourceDetailsStore } from '../../../../store/useResourceDetailsStore';
 import { useTerminalStore } from '../../../../store/useTerminalStore';
@@ -293,7 +293,7 @@ export const PodOverview: React.FC<Props> = ({ resource, pod }) => {
                     <div className="text-left">
                       <div className="text-sm font-mono text-slate-200">{svc.name}</div>
                       <div className="text-xs text-slate-500">
-                        {svcType} • {ports.map((p: any) => `${p.port}${p.targetPort ? ':' + p.targetPort : ''}`).join(', ')}
+                        {svcType} • {ports.map((p: V1ServicePort) => `${p.port}${p.targetPort ? ':' + p.targetPort : ''}`).join(', ')}
                       </div>
                     </div>
                     <ExternalLink size={12} className="text-slate-500" />

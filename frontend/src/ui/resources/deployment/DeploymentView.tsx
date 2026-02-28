@@ -14,6 +14,7 @@ interface DeploymentViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const deploymentTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'containers', label: 'Containers' },

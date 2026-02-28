@@ -24,9 +24,10 @@ export const TerminalWindow: React.FC = () => {
   // Automatically maximize if a new session is opened or focused while minimized
   useEffect(() => {
     if (isOpen && isMinimized) {
-        setIsMinimized(false);
+      setIsMinimized(false);
     }
-  }, [lastFocusTimestamp]); // Dependencies: whenever focus is requested
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only run when lastFocusTimestamp changes
+  }, [lastFocusTimestamp]);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
 
   const handleCloseRequest = () => {
@@ -282,7 +283,8 @@ const SessionContent: React.FC<{ session: TerminalSession, isActive: boolean, is
             readerRef.current.cancel();
         }
     };
-  }, []); // Only on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setup effect, run once on mount
+  }, []);
 
   // Refit when active/visible
   useEffect(() => {

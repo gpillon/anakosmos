@@ -11,6 +11,7 @@ interface IngressViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const ingressTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'rules', label: 'Routing Rules' },

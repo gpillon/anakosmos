@@ -121,6 +121,6 @@ func HandleExec(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		log.Println("Stream error:", err)
-		ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
+		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("Error: %v", err)))
 	}
 }

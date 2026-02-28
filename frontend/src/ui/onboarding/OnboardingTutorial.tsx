@@ -252,6 +252,7 @@ export const OnboardingTutorial: React.FC = () => {
 
   // Animate highlight appearance
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShowHighlight(false);
     const timer = setTimeout(() => setShowHighlight(true), 100);
     return () => clearTimeout(timer);

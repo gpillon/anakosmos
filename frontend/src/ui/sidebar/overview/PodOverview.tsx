@@ -11,8 +11,8 @@ export const PodOverview: React.FC<OverviewContext> = ({ resource, raw, onOpenTe
   const status = raw?.status || {};
   const spec = raw?.spec || {};
   const containerStatuses = status.containerStatuses || [];
-  const restarts = containerStatuses.reduce((sum: number, c: any) => sum + (c.restartCount || 0), 0);
-  const ready = containerStatuses.filter((c: any) => c.ready).length;
+  const restarts = containerStatuses.reduce((sum: number, c: { restartCount?: number }) => sum + (c.restartCount || 0), 0);
+  const ready = containerStatuses.filter((c: { ready?: boolean }) => c.ready).length;
   const total = containerStatuses.length;
 
   return (

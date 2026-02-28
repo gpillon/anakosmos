@@ -55,7 +55,7 @@ export const ResourceDetailsWindow: React.FC = () => {
   const watchKey = useMemo(() => {
     if (!resource) return null;
     return `${resource.kind}/${resource.namespace}/${resource.name}`;
-  }, [resource?.kind, resource?.namespace, resource?.name]);
+  }, [resource?.kind, resource?.namespace, resource?.name]); // eslint-disable-line react-hooks/exhaustive-deps -- resource identity only, not full object
 
   // Auto-maximize when resourceId changes (new resource opened)
   useEffect(() => {
@@ -116,6 +116,7 @@ export const ResourceDetailsWindow: React.FC = () => {
       watchTargetRef.current = null;
       setIsWatching(false);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, watchKey, client, updateResourceRaw, resource?.id, resource?.kind, resource?.namespace, resource?.name]);
 
   // Cleanup on close

@@ -67,6 +67,7 @@ export const JobOverview: React.FC<JobOverviewProps> = ({ resource, model, updat
   let duration = '';
   if (startTime) {
     const start = new Date(startTime).getTime();
+    // eslint-disable-next-line react-hooks/purity -- Date.now() for live duration when job is running
     const end = completionTime ? new Date(completionTime).getTime() : Date.now();
     const durationMs = end - start;
     const secs = Math.floor(durationMs / 1000);

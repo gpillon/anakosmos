@@ -161,7 +161,7 @@ export const ApplicationCreationTab: React.FC<ApplicationCreationTabProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  }, [client, resources, yamlPreview, appName, setIsSubmitting, setStatusMessage, setError, reset]);
+  }, [client, resources, yamlPreview, appName, namespace, setIsSubmitting, setStatusMessage, setError, reset]);
   
   // Summary stats
   const totalResources = resources.length;

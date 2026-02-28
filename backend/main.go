@@ -4,7 +4,9 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/anakosmos/backend/src/api"
 	"github.com/anakosmos/backend/src/helm"
@@ -26,6 +28,13 @@ func main() {
 	devProxy := flag.String("dev-proxy", "", "Dev URL to reverse proxy to (e.g. http://localhost:5173)")
 	flag.Parse()
 
+	inClusterMode := strings.EqualFold(os.Getenv("IN_CLUSTER_MODE"), "true")
+	if inClusterMode {
+		log.Println("IN_CLUSTER_MODE is enabled — proxy mode will use the local ServiceAccount")
+	} else {
+		log.Println("IN_CLUSTER_MODE is disabled — proxy mode via internal config is blocked")
+	}
+
 	// Try to build config from flags
 	config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
 	if err != nil {
@@ -37,153 +46,97 @@ func main() {
 		}
 	}
 
+	// resolveConfig returns the appropriate rest.Config for a request.
+	// When a custom target is provided, it builds a config from the target/token params.
+	// When no target is provided, it uses the local config only if IN_CLUSTER_MODE is enabled.
+	resolveConfig := func(w http.ResponseWriter, r *http.Request) *rest.Config {
+		targetUrl := r.URL.Query().Get("target")
+		token := r.URL.Query().Get("token")
+
+		if targetUrl != "" {
+			return &rest.Config{
+				Host:            targetUrl,
+				BearerToken:     token,
+				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
+			}
+		}
+
+		if !inClusterMode {
+			http.Error(w, "In-cluster mode is disabled. Set IN_CLUSTER_MODE=true to allow proxy access, or connect to a remote cluster.", http.StatusForbidden)
+			return nil
+		}
+
+		if config == nil {
+			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+			return nil
+		}
+
+		return config
+	}
+
 	// API Routes
 	// Status
 	http.HandleFunc("/api/status", api.StatusHandler(config))
 
 	// Exec Handler
 	http.HandleFunc("/api/sock/exec", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var execConfig *rest.Config
-		if targetUrl != "" {
-			execConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			execConfig = config
-		}
-
-		if execConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		k8s.HandleExec(execConfig, w, r)
+		k8s.HandleExec(c, w, r)
 	})
 
 	// Watch Handler (all resources - simplified)
 	http.HandleFunc("/api/sock/watch", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var watchConfig *rest.Config
-		if targetUrl != "" {
-			watchConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			watchConfig = config
-		}
-
-		if watchConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		k8s.HandleWatch(watchConfig, w, r)
+		k8s.HandleWatch(c, w, r)
 	})
 
 	// Single Resource Watch Handler (full object data)
 	http.HandleFunc("/api/sock/watch/resource", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var watchConfig *rest.Config
-		if targetUrl != "" {
-			watchConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			watchConfig = config
-		}
-
-		if watchConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		k8s.HandleSingleWatch(watchConfig, w, r)
+		k8s.HandleSingleWatch(c, w, r)
 	})
 
 	// Cluster Init Handler - returns all resources in lightweight format with pre-calculated links
 	http.HandleFunc("/api/cluster/init", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var initConfig *rest.Config
-		if targetUrl != "" {
-			initConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			initConfig = config
-		}
-
-		if initConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		k8s.HandleInit(initConfig, w, r)
+		k8s.HandleInit(c, w, r)
 	})
 
 	// Apply YAML Handler
 	http.HandleFunc("/api/resources/apply-yaml", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var applyConfig *rest.Config
-		if targetUrl != "" {
-			applyConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			applyConfig = config
-		}
-
-		if applyConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		k8s.HandleApplyYaml(applyConfig, w, r)
+		k8s.HandleApplyYaml(c, w, r)
 	})
 
 	// Helm Handler - MUST be registered BEFORE /api/ catch-all
 	http.HandleFunc("/api/helm/", func(w http.ResponseWriter, r *http.Request) {
-		targetUrl := r.URL.Query().Get("target")
-		token := r.URL.Query().Get("token")
-
-		var helmConfig *rest.Config
-		if targetUrl != "" {
-			helmConfig = &rest.Config{
-				Host:            targetUrl,
-				BearerToken:     token,
-				TLSClientConfig: rest.TLSClientConfig{Insecure: true},
-			}
-		} else {
-			helmConfig = config
-		}
-
-		if helmConfig == nil {
-			http.Error(w, "Kubernetes config not loaded", http.StatusServiceUnavailable)
+		c := resolveConfig(w, r)
+		if c == nil {
 			return
 		}
-		helm.HandleHelmRequest(helmConfig, w, r)
+		helm.HandleHelmRequest(c, w, r)
 	})
 
 	// Custom Proxy Handler (Dynamic Target)
 	http.HandleFunc("/proxy/", api.ProxyHandler())
 
 	// Internal Proxy (Using local kubeconfig) - This is a catch-all, must be last
-	http.HandleFunc("/api/", api.InternalProxyHandler(config))
+	http.HandleFunc("/api/", api.InternalProxyHandler(config, inClusterMode))
 
 	// Serve Frontend or Proxy to Dev Server
 	if *devProxy != "" {

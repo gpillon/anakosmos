@@ -36,7 +36,7 @@ const TrafficParticle: React.FC<{ start: THREE.Vector3; end: THREE.Vector3; dimm
 };
 
 export const LinkObject: React.FC<LinkObjectProps> = ({ start, end, type, dimmed = false }) => {
-  const ref = useRef<any>(null);
+  const ref = useRef<THREE.Line>(null);
   const startVec = new THREE.Vector3(...start);
   const endVec = new THREE.Vector3(...end);
 
@@ -45,6 +45,8 @@ export const LinkObject: React.FC<LinkObjectProps> = ({ start, end, type, dimmed
       const geometry = ref.current.geometry;
       geometry.setFromPoints([startVec, endVec]);
     }
+  // startVec and endVec are Vector3 instances derived from start/end; adding them causes unnecessary re-runs
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [start, end]);
 
   const color = type === 'owner' ? '#94a3b8' // Slate 400 (Lighter than 600)
@@ -57,7 +59,7 @@ export const LinkObject: React.FC<LinkObjectProps> = ({ start, end, type, dimmed
 
   return (
     <group>
-      <line ref={ref}>
+      <line ref={ref as React.Ref<SVGLineElement>}>
         <bufferGeometry />
         <lineBasicMaterial color={color} opacity={opacity} transparent linewidth={1} />
       </line>

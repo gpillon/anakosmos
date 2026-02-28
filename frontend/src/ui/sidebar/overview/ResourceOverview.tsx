@@ -25,6 +25,7 @@ import { GenericOverview } from './GenericOverview';
 
 export interface OverviewContext {
   resource: ClusterResource;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   raw?: any;
   onOpenDetails?: () => void;
   onOpenTerminal?: (mode: 'shell' | 'logs') => void;

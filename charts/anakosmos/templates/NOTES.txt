@@ -25,6 +25,38 @@
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "anakosmos.fullname" . }} 8080:{{ .Values.service.port }}
   echo "Visit http://localhost:8080"
 {{- end }}
+{{- if .Values.inClusterMode.enabled }}
+
+⚠️  WARNING: In-cluster mode is ENABLED.
+   The dashboard will auto-connect using its ServiceAccount WITHOUT user authentication.
+   Anyone who can reach the dashboard can administer the cluster.
+   Only enable this in trusted networks or behind an authenticating proxy.
+{{- else }}
+
+🔒 In-cluster mode is disabled (default). The internal proxy is blocked.
+   Users must connect to a remote cluster and provide their own credentials.
+{{- end }}
+{{- if .Values.serviceAccount.create }}
+
+📋 Retrieve the ServiceAccount token with:
+
+  kubectl create token {{ include "anakosmos.serviceAccountName" . }} --namespace {{ .Release.Namespace }}
+
+   Or, for a long-lived token, create a Secret:
+
+  kubectl apply -f - <<EOF
+  apiVersion: v1
+  kind: Secret
+  metadata:
+    name: {{ include "anakosmos.serviceAccountName" . }}-token
+    namespace: {{ .Release.Namespace }}
+    annotations:
+      kubernetes.io/service-account.name: {{ include "anakosmos.serviceAccountName" . }}
+  type: kubernetes.io/service-account-token
+  EOF
+
+  kubectl get secret {{ include "anakosmos.serviceAccountName" . }}-token --namespace {{ .Release.Namespace }} -o jsonpath='{.data.token}' | base64 -d
+{{- end }}
 
 📖 Documentation: https://github.com/gpillon/anakosmos
 

@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import type { V1OwnerReference } from '../../../api/k8s-types';
 import { useClusterStore } from '../../../store/useClusterStore';
 import { useResourceDetailsStore } from '../../../store/useResourceDetailsStore';
 import { Card, CardHeader, CardBody } from './Card';
@@ -85,7 +86,7 @@ export const OwnerReferencesCard: React.FC<OwnerReferencesCardProps> = ({
       if (showFullChain && ownerResource?.raw?.metadata?.ownerReferences) {
         const parentRefs = ownerResource.raw.metadata.ownerReferences;
         // Follow the controller owner (or first if none marked as controller)
-        const controllerRef = parentRefs.find((r: any) => r.controller) || parentRefs[0];
+        const controllerRef = parentRefs.find((r: V1OwnerReference) => r.controller) || parentRefs[0];
         if (controllerRef) {
           const parentChain = buildChain(controllerRef);
           chain.push(...parentChain);

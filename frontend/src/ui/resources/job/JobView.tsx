@@ -10,6 +10,7 @@ interface JobViewProps {
   activeTab: string;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const jobTabs = [
   { id: 'overview', label: 'Overview' },
   { id: 'template', label: 'Pod Template' },

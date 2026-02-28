@@ -1,5 +1,5 @@
 import React from 'react';
-import type { V1PodTemplateSpec, V1PodStatus } from '../../../api/k8s-types';
+import type { V1PodTemplateSpec, V1PodStatus, V1Container } from '../../../api/k8s-types';
 import { ContainerList } from './ContainerList';
 import { LabelsCard } from './LabelsCard';
 import { AnnotationsCard } from './AnnotationsCard';
@@ -8,7 +8,7 @@ interface PodTemplateViewProps {
   template: V1PodTemplateSpec | undefined;
   podStatus?: V1PodStatus; // For showing actual pod status (in Pod view)
   editable?: boolean;
-  onUpdateContainer?: (index: number, updates: any, isInit: boolean) => void;
+  onUpdateContainer?: (index: number, updates: Partial<V1Container>, isInit: boolean) => void;
   showLabels?: boolean;
   showAnnotations?: boolean;
 }

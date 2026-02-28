@@ -354,7 +354,7 @@ export const IngressRules: React.FC<Props> = ({ model, updateModel }) => {
                     />
                     <select
                         value={newRule.pathType}
-                        onChange={(e) => setNewRule(r => ({ ...r, pathType: e.target.value as any }))}
+                        onChange={(e) => setNewRule(r => ({ ...r, pathType: e.target.value as 'Prefix' | 'Exact' | 'ImplementationSpecific' }))}
                         className="bg-slate-800 border border-slate-700 rounded px-2 py-2 text-xs text-white focus:outline-none focus:border-blue-500"
                       >
                         <option value="Prefix">Prefix</option>
@@ -477,7 +477,7 @@ export const IngressRules: React.FC<Props> = ({ model, updateModel }) => {
                               />
                               <select
                                 value={newPath.pathType}
-                                onChange={(e) => setNewPath(p => ({ ...p, pathType: e.target.value as any }))}
+                                onChange={(e) => setNewPath(p => ({ ...p, pathType: e.target.value as 'Prefix' | 'Exact' | 'ImplementationSpecific' }))}
                                 className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
                               >
                                 <option value="Prefix">Prefix</option>
@@ -543,7 +543,7 @@ export const IngressRules: React.FC<Props> = ({ model, updateModel }) => {
                                   />
                                   <select
                                     value={editPath.pathType}
-                                    onChange={(e) => setEditPath(p => ({ ...p, pathType: e.target.value as any }))}
+                                    onChange={(e) => setEditPath(p => ({ ...p, pathType: e.target.value as 'Prefix' | 'Exact' | 'ImplementationSpecific' }))}
                                     className="bg-slate-900 border border-slate-700 rounded px-2 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500"
                                   >
                                     <option value="Prefix">Prefix</option>

@@ -11,7 +11,7 @@ export const IngressOverview: React.FC<OverviewContext> = ({ resource, raw, onOp
   const spec = raw?.spec || {};
   const status = raw?.status || {};
   const rules = spec.rules || [];
-  const hosts = rules.map((r: any) => r.host).filter(Boolean);
+  const hosts = rules.map((r: { host?: string }) => r.host).filter(Boolean);
   const tls = spec.tls || [];
   const address = status?.loadBalancer?.ingress?.[0]?.ip || status?.loadBalancer?.ingress?.[0]?.hostname;
 

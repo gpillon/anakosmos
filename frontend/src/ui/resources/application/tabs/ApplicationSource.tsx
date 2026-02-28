@@ -14,6 +14,32 @@ interface Props {
   resource: ClusterResource;
 }
 
+interface ArgoSource {
+  repoURL?: string;
+  path?: string;
+  chart?: string;
+  targetRevision?: string;
+  ref?: string;
+  helm?: {
+    releaseName?: string;
+    version?: string;
+    valueFiles?: string[];
+    parameters?: Array<{ name?: string; value?: string; forceString?: boolean }>;
+    values?: string;
+  };
+  kustomize?: {
+    namePrefix?: string;
+    nameSuffix?: string;
+    version?: string;
+    images?: string[];
+  };
+  directory?: Record<string, unknown>;
+  plugin?: {
+    name?: string;
+    env?: Array<{ name?: string; value?: string }>;
+  };
+}
+
 export const ApplicationSource: React.FC<Props> = ({ resource }) => {
   const raw = resource.raw;
   const spec = raw?.spec || {};
@@ -31,14 +57,14 @@ export const ApplicationSource: React.FC<Props> = ({ resource }) => {
 
   return (
     <div className="space-y-6">
-      {sources.map((source: any, index: number) => (
+      {sources.map((source: ArgoSource, index: number) => (
         <SourceCard key={index} source={source} index={index} total={sources.length} />
       ))}
     </div>
   );
 };
 
-const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({ 
+const SourceCard: React.FC<{ source: ArgoSource; index: number; total: number }> = ({ 
   source, index, total 
 }) => {
   const isHelm = !!source.chart || !!source.helm;
@@ -73,7 +99,7 @@ const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({
         </div>
         {source.repoURL && (
           <a
-            href={source.repoURL.replace('.git', '')}
+            href={String(source.repoURL).replace('.git', '')}
             target="_blank"
             rel="noopener noreferrer"
             className="text-slate-400 hover:text-blue-400 transition-colors"
@@ -130,14 +156,14 @@ const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({
                 <div className="mt-3">
                   <div className="text-xs text-slate-500 uppercase mb-2">Parameters</div>
                   <div className="space-y-1">
-                    {source.helm.parameters.map((param: any, i: number) => (
+                    {source.helm.parameters.map((param, i: number) => (
                       <div 
                         key={i}
                         className="flex items-center gap-2 text-xs bg-slate-800/50 px-2 py-1.5 rounded border border-slate-700"
                       >
-                        <span className="text-blue-400 font-mono">{param.name}</span>
+                        <span className="text-blue-400 font-mono">{String(param.name ?? '')}</span>
                         <span className="text-slate-600">=</span>
-                        <span className="text-slate-300 font-mono truncate">{param.value}</span>
+                        <span className="text-slate-300 font-mono truncate">{String(param.value ?? '')}</span>
                         {param.forceString && (
                           <span className="text-[10px] bg-slate-700 text-slate-400 px-1 rounded">string</span>
                         )}
@@ -200,13 +226,13 @@ const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({
           <div className="pt-4 border-t border-slate-800 space-y-3">
             <SectionTitle icon={<Folder size={14} />} title="Directory Configuration" />
             <div className="space-y-2 text-sm">
-              <MetaRow label="Recurse" value={source.directory.recurse ? 'Yes' : 'No'} />
-              {source.directory.include && (
-                <MetaRow label="Include" value={source.directory.include} />
-              )}
-              {source.directory.exclude && (
-                <MetaRow label="Exclude" value={source.directory.exclude} />
-              )}
+              <MetaRow label="Recurse" value={String(source.directory.recurse ? 'Yes' : 'No')} />
+              {source.directory.include != null ? (
+                <MetaRow label="Include" value={String(source.directory.include)} />
+              ) : null}
+              {source.directory.exclude != null ? (
+                <MetaRow label="Exclude" value={String(source.directory.exclude)} />
+              ) : null}
             </div>
           </div>
         )}
@@ -217,7 +243,7 @@ const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({
             <SectionTitle icon={<Settings size={14} />} title="Plugin Configuration" />
             <div className="space-y-2 text-sm">
               {source.plugin.name && (
-                <MetaRow label="Plugin Name" value={source.plugin.name} />
+                <MetaRow label="Plugin Name" value={String(source.plugin.name)} />
               )}
               
               {/* Plugin Env */}
@@ -225,14 +251,14 @@ const SourceCard: React.FC<{ source: any; index: number; total: number }> = ({
                 <div className="mt-3">
                   <div className="text-xs text-slate-500 uppercase mb-2">Environment</div>
                   <div className="space-y-1">
-                    {source.plugin.env.map((env: any, i: number) => (
+                    {source.plugin.env.map((env, i: number) => (
                       <div 
                         key={i}
                         className="flex items-center gap-2 text-xs bg-slate-800/50 px-2 py-1.5 rounded border border-slate-700"
                       >
-                        <span className="text-blue-400 font-mono">{env.name}</span>
+                        <span className="text-blue-400 font-mono">{String(env.name ?? '')}</span>
                         <span className="text-slate-600">=</span>
-                        <span className="text-slate-300 font-mono truncate">{env.value}</span>
+                        <span className="text-slate-300 font-mono truncate">{String(env.value ?? '')}</span>
                       </div>
                     ))}
                   </div>
@@ -253,7 +279,7 @@ const SectionTitle: React.FC<{ icon: React.ReactNode; title: string }> = ({ icon
   </div>
 );
 
-const MetaRow: React.FC<{ label: string; value: any; mono?: boolean }> = ({ label, value, mono }) => (
+const MetaRow: React.FC<{ label: string; value: React.ReactNode; mono?: boolean }> = ({ label, value, mono }) => (
   <div className="flex justify-between items-center gap-4">
     <span className="text-slate-500 shrink-0">{label}</span>
     <span className={clsx(

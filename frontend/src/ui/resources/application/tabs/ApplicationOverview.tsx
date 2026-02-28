@@ -19,7 +19,7 @@ import { clsx } from 'clsx';
 
 interface Props {
   resource: ClusterResource;
-  onApply: (updatedRaw: any) => Promise<void>;
+  onApply: (updatedRaw: Record<string, unknown>) => Promise<void>;
 }
 
 export const ApplicationOverview: React.FC<Props> = ({ resource }) => {
@@ -346,7 +346,7 @@ const StatusCard: React.FC<{
   </div>
 );
 
-const MetaRow: React.FC<{ label: string; value: any; mono?: boolean; truncate?: boolean }> = ({ 
+const MetaRow: React.FC<{ label: string; value: React.ReactNode; mono?: boolean; truncate?: boolean }> = ({ 
   label, value, mono, truncate 
 }) => (
   <div className="flex justify-between items-center gap-4">

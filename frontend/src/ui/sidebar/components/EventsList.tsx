@@ -4,7 +4,7 @@ import { Clock } from 'lucide-react';
 import { EmptyState } from './EmptyState';
 
 interface EventsListProps {
-  events: any[];
+  events: Record<string, unknown>[];
 }
 
 const EventItem = ({ type, reason, message, time }: { type: 'Normal' | 'Warning'; reason: string; message: string; time: string }) => (
@@ -35,8 +35,9 @@ export const EventsList: React.FC<EventsListProps> = ({ events }) => {
   return (
     <div className="space-y-4">
       {events.map((evt, i) => {
-        const time = evt.lastTimestamp || evt.eventTime || evt.metadata.creationTimestamp;
-        const date = new Date(time);
+        const meta = evt.metadata as Record<string, unknown> | undefined;
+        const time = evt.lastTimestamp || evt.eventTime || meta?.creationTimestamp;
+        const date = new Date(time as string | number);
         const now = new Date();
         const diffMs = now.getTime() - date.getTime();
         const diffMins = Math.floor(diffMs / 60000);
@@ -47,10 +48,10 @@ export const EventsList: React.FC<EventsListProps> = ({ events }) => {
 
         return (
           <EventItem
-            key={evt.metadata.uid || i}
+            key={(meta?.uid as string) || i}
             type={evt.type === 'Warning' ? 'Warning' : 'Normal'}
-            reason={evt.reason}
-            message={evt.message}
+            reason={String(evt.reason ?? '')}
+            message={String(evt.message ?? '')}
             time={timeStr}
           />
         );

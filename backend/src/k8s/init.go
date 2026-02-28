@@ -563,7 +563,7 @@ func HandleInit(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 	if services != nil {
 		for _, s := range services.Items {
 			var selector map[string]string
-			if s.Spec.Selector != nil && len(s.Spec.Selector) > 0 {
+			if len(s.Spec.Selector) > 0 {
 				selector = s.Spec.Selector
 			}
 
@@ -1149,7 +1149,6 @@ func HandleInit(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 	// Process HPAs
 	if hpas != nil {
 		for _, hpa := range hpas.Items {
-			status := "Unknown"
 			health := "warning"
 
 			conditions := hpa.Status.Conditions
@@ -1164,6 +1163,7 @@ func HandleInit(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
+			var status string
 			if ableCond && scalingActiveCond {
 				status = "Active"
 				health = "ok"
@@ -1309,7 +1309,7 @@ func HandleInit(config *rest.Config, w http.ResponseWriter, r *http.Request) {
 
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(InitResponse{
+	_ = json.NewEncoder(w).Encode(InitResponse{
 		Resources: resources,
 		Links:     links,
 	})

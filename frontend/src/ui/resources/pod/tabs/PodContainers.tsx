@@ -1,5 +1,5 @@
 import React from 'react';
-import type { V1Pod } from '../../../../api/k8s-types';
+import type { V1Pod, V1Container, V1ContainerStatus, V1ContainerPort, V1VolumeMount } from '../../../../api/k8s-types';
 import type { ClusterResource } from '../../../../api/types';
 import { useTerminalStore } from '../../../../store/useTerminalStore';
 import { Terminal, FileText, Box, ChevronDown, ChevronRight, Shield } from 'lucide-react';
@@ -133,8 +133,8 @@ export const PodContainers: React.FC<Props> = ({ resource, pod }) => {
 
 // Internal component for container card with actions
 interface ContainerCardWithActionsProps {
-  container: any;
-  status: any;
+  container: V1Container;
+  status: V1ContainerStatus | undefined;
   stateInfo: { state: string; color: string; detail?: string } | null;
   isInit?: boolean;
   isExpanded: boolean;
@@ -248,7 +248,7 @@ const ContainerCardWithActions: React.FC<ContainerCardWithActionsProps> = ({
             <div className="space-y-2">
               <div className="text-xs text-slate-500 uppercase font-bold">Ports</div>
               <div className="flex flex-wrap gap-2">
-                {container.ports.map((port: any, i: number) => (
+                {container.ports.map((port: V1ContainerPort, i: number) => (
                   <div key={i} className="flex items-center gap-1 text-xs bg-slate-700/50 px-2 py-1 rounded">
                     {port.name && <span className="text-blue-400">{port.name}:</span>}
                     <span className="text-slate-300 font-mono">{port.containerPort}</span>
@@ -282,7 +282,7 @@ const ContainerCardWithActions: React.FC<ContainerCardWithActionsProps> = ({
             <div className="space-y-2">
               <div className="text-xs text-slate-500 uppercase font-bold">Volume Mounts</div>
               <div className="space-y-1">
-                {container.volumeMounts.map((mount: any, i: number) => (
+                {container.volumeMounts.map((mount: V1VolumeMount, i: number) => (
                   <div key={i} className="flex items-center gap-2 text-xs">
                     <span className="text-blue-400 font-mono">{mount.name}</span>
                     <span className="text-slate-600">→</span>

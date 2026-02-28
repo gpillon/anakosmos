@@ -89,7 +89,7 @@ export const IngressOverview: React.FC<Props> = ({ resource, model, updateModel 
 
   // Count rules and paths
   const getRuleCounts = () => {
-    let ruleCount = spec?.rules?.length || 0;
+    const ruleCount = spec?.rules?.length || 0;
     let pathCount = 0;
     if (spec?.rules) {
       for (const rule of spec.rules) {

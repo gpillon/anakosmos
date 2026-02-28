@@ -32,18 +32,23 @@ export const ConnectionScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [step, setStep] = useState<'select' | 'auth'>('select');
   const [activeMode, setActiveMode] = useState<'proxy' | 'custom' | null>(null);
-  const [inCluster, setInCluster] = useState(false);
+  const [inClusterMode, setInClusterMode] = useState(false);
+  const [autoConnecting, setAutoConnecting] = useState(false);
 
   React.useEffect(() => {
     fetch('/api/status')
       .then(r => r.json())
       .then(data => {
-        if (data.inCluster) setInCluster(true);
+        if (data.inClusterMode) {
+          setInClusterMode(true);
+          setAutoConnecting(true);
+          connect('proxy').catch(() => setAutoConnecting(false));
+        }
       })
       .catch(() => {
         // ignore errors
       });
-  }, []);
+  }, [connect]);
 
   const handleConnect = async (mode: 'proxy' | 'custom', url?: string) => {
     setActiveMode(mode);
@@ -104,6 +109,30 @@ export const ConnectionScreen: React.FC = () => {
     setShouldSave(false);
   };
 
+  if (autoConnecting) {
+    return (
+      <div className="flex flex-col items-center justify-center w-screen h-screen bg-slate-900 text-white">
+        <h1 className="text-3xl font-bold mb-4 bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+          Anakosmos
+        </h1>
+        <div className="flex items-center gap-3 text-slate-300">
+          <div className="w-5 h-5 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+          <span>{loadingMessage || 'Connecting to cluster...'}</span>
+        </div>
+        {loadingProgress > 0 && (
+          <div className="w-64 mt-4">
+            <div className="w-full h-1.5 bg-slate-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300 ease-out rounded-full"
+                style={{ width: `${Math.max(5, loadingProgress)}%` }}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center w-screen h-screen bg-slate-900 text-white overflow-y-auto py-10">
       <div className="w-full max-w-md p-8 bg-slate-800 rounded-lg shadow-xl border border-slate-700">
@@ -123,8 +152,8 @@ export const ConnectionScreen: React.FC = () => {
 
         {step === 'select' && (
           <div className="space-y-4">
-            {/* Suggested: In-Cluster Connection */}
-            {inCluster && (
+            {/* Suggested: In-Cluster Connection (only when IN_CLUSTER_MODE is enabled) */}
+            {inClusterMode && (
               <button
                 onClick={() => handleConnect('proxy')}
                 disabled={isLoading}

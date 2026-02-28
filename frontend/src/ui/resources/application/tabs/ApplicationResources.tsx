@@ -25,10 +25,20 @@ interface Props {
   resource: ClusterResource;
 }
 
+interface ManagedResource {
+  kind: string;
+  name: string;
+  namespace?: string;
+  status?: string;
+  health?: { status?: string; message?: string };
+}
+
 export const ApplicationResources: React.FC<Props> = ({ resource }) => {
   const raw = resource.raw;
-  const status = raw?.status || {};
-  const managedResources = status.resources || [];
+  const managedResources = useMemo(() => {
+    const status = raw?.status || {};
+    return (status.resources || []) as ManagedResource[];
+  }, [raw]);
   
   const allResources = useClusterStore(state => state.resources);
   const openDetails = useResourceDetailsStore(state => state.openDetails);
@@ -40,13 +50,13 @@ export const ApplicationResources: React.FC<Props> = ({ resource }) => {
   // Get unique kinds from managed resources
   const uniqueKinds = useMemo(() => {
     const kinds = new Set<string>();
-    managedResources.forEach((r: any) => kinds.add(r.kind));
+    managedResources.forEach((r: ManagedResource) => kinds.add(r.kind));
     return Array.from(kinds).sort();
   }, [managedResources]);
 
   // Filter resources
   const filteredResources = useMemo(() => {
-    return managedResources.filter((r: any) => {
+    return managedResources.filter((r: ManagedResource) => {
       const matchesSearch = !search || 
         r.name.toLowerCase().includes(search.toLowerCase()) ||
         r.kind.toLowerCase().includes(search.toLowerCase());
@@ -58,15 +68,15 @@ export const ApplicationResources: React.FC<Props> = ({ resource }) => {
 
   // Stats
   const stats = useMemo(() => {
-    const synced = managedResources.filter((r: any) => r.status === 'Synced').length;
-    const outOfSync = managedResources.filter((r: any) => r.status === 'OutOfSync').length;
-    const healthy = managedResources.filter((r: any) => r.health?.status === 'Healthy').length;
-    const degraded = managedResources.filter((r: any) => r.health?.status === 'Degraded').length;
+    const synced = managedResources.filter((r: ManagedResource) => r.status === 'Synced').length;
+    const outOfSync = managedResources.filter((r: ManagedResource) => r.status === 'OutOfSync').length;
+    const healthy = managedResources.filter((r: ManagedResource) => r.health?.status === 'Healthy').length;
+    const degraded = managedResources.filter((r: ManagedResource) => r.health?.status === 'Degraded').length;
     return { synced, outOfSync, healthy, degraded, total: managedResources.length };
   }, [managedResources]);
 
   // Find matching resource in cluster
-  const findClusterResource = (res: any) => {
+  const findClusterResource = (res: ManagedResource) => {
     return Object.values(allResources).find(r => 
       r.kind === res.kind && 
       r.name === res.name && 
@@ -135,7 +145,7 @@ export const ApplicationResources: React.FC<Props> = ({ resource }) => {
           </span>
         </div>
         <div className="divide-y divide-slate-800 max-h-[600px] overflow-y-auto custom-scrollbar">
-          {filteredResources.map((res: any, i: number) => {
+          {filteredResources.map((res: ManagedResource, i: number) => {
             const clusterRes = findClusterResource(res);
             const isClickable = !!clusterRes;
             const syncStatus = res.status || 'Unknown';

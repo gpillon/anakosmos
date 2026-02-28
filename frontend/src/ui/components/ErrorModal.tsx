@@ -12,6 +12,7 @@ const formatKey = (key: string) => {
   return key.charAt(0).toUpperCase() + key.slice(1).replace(/([A-Z])/g, ' $1');
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const ValueRenderer: React.FC<{ value: any }> = ({ value }) => {
   if (value === null || value === undefined) return <span className="text-slate-500 italic">null</span>;
   
@@ -55,9 +56,11 @@ const ValueRenderer: React.FC<{ value: any }> = ({ value }) => {
 export const ErrorModal: React.FC<ErrorModalProps> = ({ isOpen, onClose, title = 'Error', error }) => {
   if (!isOpen) return null;
 
-  let parsedError: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let parsedError: Record<string, any> | null = null;
   try {
-    parsedError = JSON.parse(error);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parsedError = JSON.parse(error) as Record<string, any>;
   } catch {
     // Keep as string if not JSON
   }
@@ -87,7 +90,7 @@ export const ErrorModal: React.FC<ErrorModalProps> = ({ isOpen, onClose, title =
         {/* Content */}
         <div className="p-6 overflow-y-auto custom-scrollbar bg-slate-900">
           
-          {isStructured ? (
+          {isStructured && parsedError ? (
              <div className="space-y-6">
                 
                 {/* Primary Message */}

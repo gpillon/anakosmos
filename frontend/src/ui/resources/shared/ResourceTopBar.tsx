@@ -46,8 +46,8 @@ export const ResourceTopBar: React.FC<ResourceTopBarProps> = ({
     try {
       await onDelete();
       // The window will close automatically when the resource is deleted
-    } catch (e: any) {
-      setDeleteError(e?.message || 'Failed to delete resource');
+    } catch (e: unknown) {
+      setDeleteError(e instanceof Error ? e.message : 'Failed to delete resource');
       setIsDeleting(false);
     }
   };

@@ -55,7 +55,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
             http.Error(w, err.Error(), http.StatusBadRequest)
             return
         }
-        json.NewEncoder(w).Encode(buildRepoIndexResponse(index))
+        _ = json.NewEncoder(w).Encode(buildRepoIndexResponse(index))
         return
 
 	case "chart-values":
@@ -71,7 +71,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
             http.Error(w, err.Error(), http.StatusBadRequest)
             return
         }
-        json.NewEncoder(w).Encode(values)
+        _ = json.NewEncoder(w).Encode(values)
         return
 
 	case "release":
@@ -95,7 +95,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
 			"appVersion":   rel.Chart.Metadata.AppVersion,
 			"updated":      rel.Info.LastDeployed.Format("2006-01-02T15:04:05Z"),
 		}
-		json.NewEncoder(w).Encode(response)
+		_ = json.NewEncoder(w).Encode(response)
 
 	case "values":
         if name == "" {
@@ -109,7 +109,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(vals)
+		_ = json.NewEncoder(w).Encode(vals)
 
 	case "history":
         if name == "" {
@@ -121,7 +121,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(hist)
+		_ = json.NewEncoder(w).Encode(hist)
 
 	case "rollback":
         if r.Method != "POST" {
@@ -144,7 +144,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
              return
         }
         w.WriteHeader(http.StatusOK)
-        json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+        _ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 
     case "upgrade":
         if r.Method != "POST" {
@@ -204,7 +204,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
              http.Error(w, err.Error(), http.StatusInternalServerError)
              return
         }
-        json.NewEncoder(w).Encode(rel)
+        _ = json.NewEncoder(w).Encode(rel)
 
 	case "install":
         if r.Method != "POST" {
@@ -244,7 +244,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
                 http.Error(w, err.Error(), http.StatusInternalServerError)
                 return
             }
-            json.NewEncoder(w).Encode(rel)
+            _ = json.NewEncoder(w).Encode(rel)
             return
         }
 
@@ -273,7 +273,7 @@ func HandleHelmRequest(config *rest.Config, w http.ResponseWriter, r *http.Reque
             http.Error(w, err.Error(), http.StatusInternalServerError)
             return
         }
-        json.NewEncoder(w).Encode(rel)
+        _ = json.NewEncoder(w).Encode(rel)
 
 	default:
 		http.Error(w, "Unknown action: " + action, http.StatusNotFound)

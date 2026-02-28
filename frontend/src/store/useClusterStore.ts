@@ -48,7 +48,7 @@ interface ClusterStore {
   setSceneReady: (ready: boolean) => void;
   refresh: () => Promise<void>;
   updateResource: (action: 'ADDED' | 'MODIFIED' | 'DELETED', resource: ClusterResource) => void;
-  updateResourceRaw: (resourceId: string, raw: any) => void;
+  updateResourceRaw: (resourceId: string, raw: Record<string, unknown>) => void;
 }
 
 export const useClusterStore = create<ClusterStore>((set, get) => ({
@@ -70,7 +70,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
     set(state => {
       const resource = state.resources[resourceId];
       if (!resource) return state;
-      
+      const r = raw as { status?: { phase?: string; availableReplicas?: number; replicas?: number }; metadata?: { labels?: Record<string, string> } } | undefined;
       return {
         resources: {
           ...state.resources,
@@ -78,10 +78,10 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
             ...resource,
             raw,
             // Also update any fields that might have changed
-            status: raw?.status?.phase || raw?.status?.availableReplicas !== undefined 
-              ? (raw.status.availableReplicas === raw.status.replicas ? 'Available' : 'Progressing')
+            status: r?.status?.phase || r?.status?.availableReplicas !== undefined
+              ? (r.status.availableReplicas === r.status.replicas ? 'Available' : 'Progressing')
               : resource.status,
-            labels: raw?.metadata?.labels || resource.labels,
+            labels: r?.metadata?.labels || resource.labels,
           }
         }
       };
@@ -125,7 +125,7 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
         const ownerRefsChanged = !oldRes || 
             oldRes.ownerRefs.length !== res.ownerRefs.length ||
             oldRes.ownerRefs.some((ref, i) => ref !== res.ownerRefs[i]) ||
-            (res.kind === 'Pod' && oldRes?.nodeName !== (res as any).nodeName);
+            (res.kind === 'Pod' && oldRes?.nodeName !== res.nodeName);
 
         if (ownerRefsChanged) {
             // Filter out old owner links for this resource only
@@ -139,8 +139,8 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
             });
 
             // Pod -> Node link
-            if (res.kind === 'Pod' && (res as any).nodeName) {
-                const node = Object.values(newResources).find(r => r.kind === 'Node' && r.name === (res as any).nodeName);
+            if (res.kind === 'Pod' && res.nodeName) {
+                const node = Object.values(newResources).find(r => r.kind === 'Node' && r.name === res.nodeName);
                 if (node) {
                     newLinks.push({ source: res.id, target: node.id, type: 'owner' });
                 }
@@ -444,11 +444,11 @@ export const useClusterStore = create<ClusterStore>((set, get) => ({
           }
       });
 
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error('Connection failed:', e);
       set({ 
         isConnected: false, 
-        connectionError: e.message || 'Failed to connect' 
+        connectionError: (e instanceof Error ? e.message : null) || 'Failed to connect' 
       });
       throw e; // Re-throw for UI handling
     }

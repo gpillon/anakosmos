@@ -17,13 +17,14 @@ export const DeploymentOverview: React.FC<OverviewContext> = ({ resource, raw, o
   const unavailable = status.unavailableReplicas ?? Math.max(desired - available, 0);
   const strategy = spec.strategy?.type || 'RollingUpdate';
   const revision = raw?.metadata?.annotations?.['deployment.kubernetes.io/revision'];
-  const images = (spec.template?.spec?.containers || []).map((c: any) => c.image).filter(Boolean);
+  const images = (spec.template?.spec?.containers || []).map((c: { image?: string }) => c.image).filter(Boolean);
 
   const healthTone = useMemo(() => {
     if (desired === 0) return 'good';
     if (available === desired) return 'good';
     if (available > 0) return 'warn';
     return 'bad';
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization
   }, [desired, available]);
 
   return (
