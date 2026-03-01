@@ -3,7 +3,7 @@ name: anakosmos
 description: A Helm chart for Anakosmos - 3D Kubernetes Administration Dashboard
 type: application
 version: 0.1.2
-appVersion: "0.0.1"
+appVersion: "0.0.2"
 keywords:
   - kubernetes
   - dashboard
